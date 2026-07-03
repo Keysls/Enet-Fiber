@@ -472,10 +472,12 @@ export default function OrdenesPage() {
 
   const toggleTodos = () => {
     const elegibles = ordenes.filter(o =>
-    !esSoloNocFn(o.tipoOrden) &&
-        o.estado !== 'COMPLETADA' &&
-        o.estado !== 'CANCELADA'
-      );
+      !esSoloNocFn(o.tipoOrden) &&
+      o.estado !== 'COMPLETADA' &&
+      o.estado !== 'CANCELADA' &&
+      o.estado !== 'ACEPTADA' &&
+      o.estado !== 'EN_PROCESO'
+    );
     const todosSeleccionados = elegibles.every(o => seleccionados.has(o.id));
     setOrdenesSeleccionadas(prev => {
       const next = new Map(prev);
