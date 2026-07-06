@@ -97,7 +97,7 @@ app.use((req, res, next) => {
       return obj
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
         .replace(/javascript:/gi, '')
-        .replace(/on\w+\s*=/gi, '');
+        .replace(/\bon\w+\s*=/gi, '')
     }
     if (typeof obj === 'object' && obj !== null) {
       for (const key of Object.keys(obj)) {
@@ -129,7 +129,9 @@ app.use('/api/stock',           require('./routes/stock.routes'));
 app.use('/api/onus',            require('./routes/onus.routes'));
 app.use('/api/activos',         require('./routes/activos.routes'));
 app.use('/api/tipos-orden',     require('./routes/tiposOrden.routes'));
+app.use('/api/planta-externa',  require('./routes/plantaExterna.routes'));
 app.use('/api/logs',            require('./routes/logs.routes'));
+app.use('/api/siscadre',        require('./routes/siscadre.routes'));
 
 // ─── Health check ──────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

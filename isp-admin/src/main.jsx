@@ -20,7 +20,8 @@ import PerfilPage        from './pages/Perfil';
 import ResetPasswordPage from './pages/ResetPassword';
 import MapaPage          from './pages/Mapa';
 import ProgramarPage     from './pages/Programar'; //SE AGREGO
-import PlanesPage from './pages/Planes';
+import PlanesPage        from './pages/Planes';
+import PlantaExternaPage from './pages/PlantaExterna';
 // Nota: La página Usuarios.jsx ya no se usa en el panel admin.
 // El admin solo gestiona técnicos (desde /tecnicos).
 // La creación de admins y operadores NOC es exclusiva del SUPERADMIN (panel NOC).
@@ -62,11 +63,12 @@ function App() {
                 <Route path="/perfil"            element={<PerfilPage />}   />
                 <Route path="/mapa"              element={<MapaPage />} />
                 <Route path="/programar"         element={<ProgramarPage />} />
-                <Route path="/almacen"             element={<AdminAlmacenDashboard />} />
-                <Route path="/almacen/inventario"  element={<AdminAlmacenInventario />}/>
-                <Route path="/almacen/reportes"    element={<AdminAlmacenReportes />}  />
-                <Route path="/planes"             element={<PlanesPage />} />
-                <Route path="/almacen/devoluciones" element={<DevolucionesPage />} />
+                <Route path="/almacen"               element={<AdminAlmacenDashboard />} />
+                <Route path="/almacen/inventario"    element={<AdminAlmacenInventario />}/>
+                <Route path="/almacen/reportes"      element={<AdminAlmacenReportes />}  />
+                <Route path="/planes"                element={<PlanesPage />} />
+                <Route path="/almacen/devoluciones"  element={<DevolucionesPage />} />
+                <Route path="/planta-externa"        element={<PlantaExternaPage />} />
 
                 <Route path="*"                  element={<Navigate to="/" replace />} />
               </Routes>

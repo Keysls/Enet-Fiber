@@ -97,9 +97,9 @@ export function Btn({
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={className}           // 👈 nuevo
-      onMouseEnter={onMouseEnter}      // 👈 nuevo
-      onMouseLeave={onMouseLeave}      // 👈 nuevo
+      className={className} 
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{ ...base, ...sizes[size], ...variants[variant], ...style }}>
       {loading ? <Spinner size={13} color="currentColor" /> : icon && <span style={{ display: 'flex' }}>{icon}</span>}
       {children}

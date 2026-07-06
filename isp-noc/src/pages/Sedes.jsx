@@ -4,10 +4,11 @@ import {
   MapPin, Plus, Pencil, Building2, Users, ClipboardList,
   Power, PowerOff, Router, Wifi, Trash2, Play, Loader2,
   CheckCircle, XCircle, Eye, EyeOff, ChevronDown, ChevronUp,
-  Star, Send, Server,
+  Star, Send, Server, Database
 } from 'lucide-react';
+import DrawerSiscadre from '../components/ui/DrawerSiscadre';
 import toast from 'react-hot-toast';
-import { sedesApi, oltApi, equiposCabeceraApi } from '../services/api';
+import { sedesApi, oltApi, equiposCabeceraApi }            from '../services/api';
 import { Card, Btn, Modal, Input, Select, Spinner, Empty } from '../components/ui';
 
 // ─────────────────────────────────────────────────────────────
@@ -765,7 +766,7 @@ function EquiposCabeceraSection({ sedeId }) {
 // FILA DE SEDE (vista lista)
 // ─────────────────────────────────────────────────────────────
 
-function SedeRow({ sede, onEditar }) {
+function SedeRow({ sede, onEditar, onSiscadre }) {
   const [verOlts, setVerOlts] = useState(false);
   const [verCabecera, setVerCabecera] = useState(false);
   const expandido = verOlts || verCabecera;
@@ -825,6 +826,9 @@ function SedeRow({ sede, onEditar }) {
           <Btn variant="ghost" size="sm" icon={<Pencil size={11}/>} onClick={() => onEditar(sede)}>
             Editar
           </Btn>
+          <Btn variant="ghost" size="sm" icon={<Database size={11}/>} onClick={() => onSiscadre(sede)}>
+            Siscadre
+          </Btn>
           <button onClick={() => { setVerOlts(v => !v); setVerCabecera(false); }} title="OLTs de esta sede"
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: verOlts ? 'var(--bg-3)' : 'var(--bg)', cursor: 'pointer', color: 'var(--txt-2)', fontSize: 12, fontWeight: 600 }}>
             <Router size={12} color="var(--accent)"/> OLTs
@@ -860,6 +864,7 @@ function SedeRow({ sede, onEditar }) {
 export default function SedesPage() {
   const [showCrear,  setShowCrear]  = useState(false);
   const [sedeEditar, setSedeEditar] = useState(null);
+  const [siscadre, setSiscadre]     = useState(null);
 
   const { data: sedes, isLoading } = useQuery({
     queryKey: ['sedes'],
@@ -893,13 +898,14 @@ export default function SedesPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(sedes || []).map(s => (
-            <SedeRow key={s.id} sede={s} onEditar={setSedeEditar}/>
+            <SedeRow key={s.id} sede={s} onEditar={setSedeEditar} onSiscadre={setSiscadre}/>
           ))}
         </div>
       )}
 
       <ModalCrearSede  open={showCrear}    onClose={() => setShowCrear(false)} />
       <ModalEditarSede open={!!sedeEditar} onClose={() => setSedeEditar(null)} sede={sedeEditar} />
+      <DrawerSiscadre sedeId={siscadre?.id} sedeNombre={siscadre?.nombre}onCerrar={() => setSiscadre(null)} />
     </div>
   );
 }

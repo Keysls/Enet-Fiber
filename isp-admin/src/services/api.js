@@ -225,7 +225,22 @@ export const planesApi = {
   eliminar:   (id)         => api.delete(`/planes/${id}`),
 };
  
+export const plantaExternaApi = {
+  listar:         (params)   => api.get('/planta-externa', { params }),
+  obtener:        (id)       => api.get(`/planta-externa/${id}`),
+  crear:          (data)     => api.post('/planta-externa', data),
+  editar:         (id, data) => api.patch(`/planta-externa/${id}`, data),
+  agregarMaterial:(id, data) => api.post(`/planta-externa/${id}/material`, data),
+  completar:      (id)       => api.post(`/planta-externa/${id}/completar`),
+  agregarTecnico: (id, data) => api.post(`/planta-externa/${id}/tecnico`, data),
+};
 
+export const siscadreApi = {
+  obtenerConfig:  (sedeId)       => api.get(`/siscadre/${sedeId}/config`),
+  guardarConfig:  (sedeId, data) => api.post(`/siscadre/${sedeId}/config`, data),
+  probarConexion: (sedeId, data) => api.post(`/siscadre/${sedeId}/probar`, data),
+  sincronizar:    (sedeId)       => api.post(`/siscadre/${sedeId}/sync`),
+};
 
 export default api;
 

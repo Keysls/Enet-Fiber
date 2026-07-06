@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Upload, Search, RefreshCw, X, UserCheck } from 'lucide-react';
+import { Upload, Search, RefreshCw, X, UserCheck, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ordenesApi, tecnicosApi } from '../services/api';
+import { ordenesApi, tecnicosApi, siscadreApi } from '../services/api';
 import { Card, EstadoBadge, Table, Tr, Td, Btn, Modal, Input, Select, Spinner, Empty, TimerBadge } from '../components/ui';
 import { fmtFecha, TIPO_COLOR, ESTADO_CONFIG } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
 import DrawerOrden from '../components/DrawerOrden';
-
+import { useAuthStore } from '../store/auth.store';
 function useIsMobile(breakpoint = 1081) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
   useEffect(() => {
@@ -181,6 +181,8 @@ function OrdenCard({ o, onAsignar, onNavigate, seleccionado, onToggle, modoSelec
 // ── Modal: Subir Excel ────────────────────────────────────────
 function ModalSubirExcel({ open, onClose, tipoLabel }) {
   const qc = useQueryClient();
+
+
 
   const isMobile = useIsMobile();
   const [file,      setFile]      = useState(null);
@@ -500,6 +502,33 @@ export default function OrdenesPage() {
 
   const qc = useQueryClient();
 
+  const { usuario } = useAuthStore();
+
+  const { data: siscadreConfig } = useQuery({
+    queryKey: ['siscadre-config', usuario?.sedeId],
+    queryFn:  () => siscadreApi.obtenerConfig(usuario.sedeId).then(r => r.data),
+    enabled:  !!usuario?.sedeId,
+  });
+
+  const sincronizarMut = useMutation({
+    mutationFn: () => siscadreApi.sincronizar(usuario.sedeId),
+    onSuccess: (res) => {
+      const { nuevas, existentes, total } = res.data;
+      toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)`);
+      qc.invalidateQueries(['ordenes']);
+      qc.invalidateQueries(['siscadre-config']);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Error al sincronizar'),
+  });
+
+  const fmtFechaHora = (f) => {
+    if (!f) return null;
+    return new Date(f).toLocaleString('es-PE', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   const { data: tecnicosData } = useQuery({
     queryKey: ['tecnicos-activos'],
     queryFn:  () => tecnicosApi.listar({ activo: true }).then(r => r.data),
@@ -548,29 +577,45 @@ export default function OrdenesPage() {
       <InjectStyles />
 
       {/* Header */}
-      <div className="ordenes-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 18 : 22, fontWeight: 800, letterSpacing: '-0.02em' }}>
-            Órdenes de Servicio
-          </h1>
-          <p style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 3 }}>
-            {meta ? `${meta.total} órdenes` : '...'}
-            {seleccionados.size > 0 && (
-              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                {' '}· {seleccionados.size} seleccionada{seleccionados.size !== 1 ? 's' : ''}
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="ordenes-header-btns" style={{ display: 'flex', gap: 8 }}>
-          <Btn variant="ghost" size="sm" onClick={async () => { setSpinning(true); await refetch(); qc.invalidateQueries(['stats']); setTimeout(() => setSpinning(false), 600); }} icon={<span style={{ display: 'inline-flex' }} className={spinning ? 'spin' : ''}><RefreshCw size={13} /></span>}>
-            {isMobile ? '' : 'Actualizar'}
-          </Btn>
-          <Btn variant="primary" size="sm" onClick={() => setShowExcel(true)} icon={<Upload size={13} />}>
-            {isMobile ? 'Importar' : 'Importar Excel'}
-          </Btn>
-        </div>
+      {/* Header */}
+<div className="ordenes-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+  <div>
+    <h1 style={{ fontFamily: 'var(--font-display)', fontSize: isMobile ? 18 : 22, fontWeight: 800, letterSpacing: '-0.02em' }}>
+      Órdenes de Servicio
+    </h1>
+    <p style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 3 }}>
+      {meta ? `${meta.total} órdenes` : '...'}
+      {seleccionados.size > 0 && (
+        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+          {' '}· {seleccionados.size} seleccionada{seleccionados.size !== 1 ? 's' : ''}
+        </span>
+      )}
+    </p>
+  </div>
+  <div className="ordenes-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+    {siscadreConfig?.siscadreHost ? (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+        <Btn
+          variant="primary" size="sm"
+          onClick={() => sincronizarMut.mutate()}
+          loading={sincronizarMut.isPending}
+          icon={<Database size={13}/>}
+        >
+          {sincronizarMut.isPending ? 'Sincronizando...' : 'Sincronizar'}
+        </Btn>
+        {siscadreConfig?.siscadreLastSync && (
+          <span style={{ fontSize: 10, color: 'var(--txt-3)', marginTop: 2 }}>
+            Último: {fmtFechaHora(siscadreConfig.siscadreLastSync)}
+          </span>
+        )}
       </div>
+    ) : (
+      <Btn variant="primary" size="sm" onClick={() => setShowExcel(true)} icon={<Upload size={13} />}>
+        {isMobile ? 'Importar' : 'Importar Excel'}
+      </Btn>
+    )}
+  </div>
+</div>
 
       {/* Tabs */}
       <div className="ordenes-tabs" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>

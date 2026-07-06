@@ -31,6 +31,7 @@ const TITULOS = {
   '/almacen/inventario':  'Almacén · Inventario',
   '/almacen/devoluciones': 'Almacén · Devoluciones',
   '/almacen/reportes':    'Almacén · Reportes',
+  '/plantaexterna':       'Planta externa',
 };
 
 function tituloDeRuta(pathname) {

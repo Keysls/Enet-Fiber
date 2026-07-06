@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 
 const NAV_PRINCIPAL = [
@@ -22,6 +22,10 @@ const NAV_ALMACEN = [
 const NAV_PERSONAL = [
   { to: '/tecnicos',    label: 'Técnicos',       icon: Users    },
   { to: '/secretarios', label: 'Secretario(a)',  icon: UserCog  },
+];
+
+const NAV_PLANTA_EXTERNA = [
+  { to: '/planta-externa', label: 'Planta Externa', icon: HardHat },
 ];
 
 const S = {
@@ -183,6 +187,16 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
             <>
               {!colapsado ? <div style={S.sectionLabel}>Almacén</div> : <div style={S.sectionDivider} />}
               {NAV_ALMACEN.map(({ to, label, icon: Icon }) => (
+                <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
+              ))}
+            </>
+          )}
+
+          {/* Planta Externa — solo ADMIN */}
+          {esAdmin && (
+            <>
+              {!colapsado ? <div style={S.sectionLabel}>Planta Externa</div> : <div style={S.sectionDivider} />}
+              {NAV_PLANTA_EXTERNA.map(({ to, label, icon: Icon }) => (
                 <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
               ))}
             </>

@@ -38,6 +38,16 @@ model Sede {
   stockSedeVariantes StockSedeVariante[]
   tecnicos           Tecnico[]
   usuarios           Usuario[]
+  trabajosPE         TrabajoPlantaExterna[]
+
+  // Siscadre
+  siscadreHost     String?  @map("siscadre_host")
+  siscadrePort     Int?     @map("siscadre_port") @default(3306)
+  siscadreUser     String?  @map("siscadre_user")
+  siscadrePassword String?  @map("siscadre_password")
+  siscadreDatabase String?  @map("siscadre_database")
+  siscadreScript   String?  @map("siscadre_script") @db.Text
+  siscadreLastSync DateTime? @map("siscadre_last_sync")
 
   @@map("sedes")
 }
@@ -81,6 +91,7 @@ model Tecnico {
   entregas      EntregaTecnico[]
   onusAsignadas Onu[]
   ordenes       OrdenServicio[]
+  trabajosPE    TecnicoEnTrabajoPE[]
   sede          Sede?               @relation(fields: [sedeId], references: [id])
   usuario       Usuario             @relation(fields: [usuarioId], references: [id])
 
@@ -138,6 +149,7 @@ model Contrato {
 model OrdenServicio {
   id                String        @id @default(uuid())
   nServicio         String
+  codigoSiscadre    String?       @map("codigo_siscadre")
   tipoOrden         TipoOrden
   estado            EstadoOrden   @default(PENDIENTE_NOC)
   fechaServicio     DateTime
@@ -413,6 +425,7 @@ model Producto {
   variantes          ProductoVariante[]
   salidasDirectas    SalidaDirecta[]
   stockSedes         StockSede[]
+  materialesPE       MaterialTrabajoPE[]
 
   @@map("productos")
 }
@@ -528,8 +541,10 @@ model ConsumoTecnico {
   sedeId      String?
   codigoPon   String?  @map("codigo_pon") @db.VarChar(100)  // ← AGREGAR
   fecha       DateTime @default(now())
-  producto    Producto @relation(fields: [productoId], references: [id])
-  tecnico     Tecnico  @relation(fields: [tecnicoId], references: [id])
+  trabajoPEId String?  @map("trabajo_pe_id")
+  producto    Producto              @relation(fields: [productoId], references: [id])
+  tecnico     Tecnico               @relation(fields: [tecnicoId], references: [id])
+  trabajoPE   TrabajoPlantaExterna? @relation(fields: [trabajoPEId], references: [id])
 
   @@map("consumo_tecnico")
 }
@@ -697,6 +712,65 @@ model PlanInternet {
   @@index([sedeId])
   @@index([sedeId], map: "idx_planes_internet_sede")
   @@map("planes_internet")
+}
+
+model TrabajoPlantaExterna {
+  id          String   @id @default(uuid())
+  tipo        TipoTrabajoPE
+  nombre      String
+  descripcion String?
+  ubicacion   String?  // solo AVERIA_MASIVA
+  estado      EstadoTrabajoPE @default(EN_CURSO)
+  fechaInicio DateTime @default(now())
+  fechaFin    DateTime?
+  sedeId      String
+  creadoPor   String   // usuarioId del técnico que lo creó
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sede        Sede     @relation(fields: [sedeId], references: [id])
+  tecnicos    TecnicoEnTrabajoPE[]
+  materiales  MaterialTrabajoPE[]
+  consumos    ConsumoTecnico[]
+
+  @@map("trabajos_planta_externa")
+}
+
+model TecnicoEnTrabajoPE {
+  id        Int    @id @default(autoincrement())
+  trabajoId String @map("trabajo_id")
+  tecnicoId String @map("tecnico_id")
+  trabajo   TrabajoPlantaExterna @relation(fields: [trabajoId], references: [id])
+  tecnico   Tecnico              @relation(fields: [tecnicoId], references: [id])
+
+  @@unique([trabajoId, tecnicoId])
+  @@map("tecnicos_trabajo_pe")
+}
+
+model MaterialTrabajoPE {
+  id          Int      @id @default(autoincrement())
+  trabajoId   String   @map("trabajo_id")
+  productoId  Int      @map("producto_id")
+  cantidad    Decimal  @db.Decimal(10, 2)
+  registradoPor String @map("registrado_por")
+  fecha       DateTime @default(now())
+  comentario  String?
+
+  trabajo     TrabajoPlantaExterna @relation(fields: [trabajoId], references: [id])
+  producto    Producto             @relation(fields: [productoId], references: [id])
+
+  @@map("materiales_trabajo_pe")
+}
+
+enum TipoTrabajoPE {
+  PROYECTO
+  AVERIA_MASIVA
+  MANTENIMIENTO
+}
+
+enum EstadoTrabajoPE {
+  EN_CURSO
+  COMPLETADO
 }
 
 enum Rol {
