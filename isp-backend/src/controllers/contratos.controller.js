@@ -140,8 +140,13 @@ const obtener = async (req, res, next) => {
     const esSoloInternet = req.query.soloInternet === 'true';
     const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
-    const contrato = await prisma.contrato.findUnique({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+    const tipoServicioQuery = req.query.tipoServicio || undefined;
+    const contrato = await prisma.contrato.findFirst({
+      where: {
+        numero: req.params.numero,
+        sedeId,
+        ...(tipoServicioQuery && { tipoServicio: tipoServicioQuery }),
+      },
       include: {
         sede: { select: { id: true, nombre: true, ciudad: true } },
         plan:    { select: { nombre: true, mbps: true } }, 
@@ -327,13 +332,18 @@ const guardarWan = async (req, res, next) => {
     if (!esIp(mascara)) return res.status(400).json({ error: 'Máscara inválida' });
     if (!esIp(gateway)) return res.status(400).json({ error: 'Gateway inválido' });
 
-    const contrato = await prisma.contrato.findUnique({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+    const tipoServicioQuery = req.query.tipoServicio || req.body.tipoServicio || undefined;
+    const contrato = await prisma.contrato.findFirst({
+      where: {
+        numero: req.params.numero,
+        sedeId,
+        ...(tipoServicioQuery && { tipoServicio: tipoServicioQuery }),
+      },
     });
     if (!contrato) return res.status(404).json({ error: 'Contrato no encontrado' });
 
     const actualizado = await prisma.contrato.update({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+      where: { id: contrato.id },
       data:  { ipWan, mascara, gateway },
     });
 
@@ -425,10 +435,18 @@ const confirmarExcel = async (req, res, next) => {
           continue;
         }
 
-        const existe = await prisma.contrato.findUnique({ where: { numero_sedeId: { numero: c.numero, sedeId } } });
+        const existe = await prisma.contrato.findFirst({
+          where: { numero: c.numero, sedeId, tipoServicio: c.tipoServicio || null },
+        });
 
         await prisma.contrato.upsert({
-          where:  { numero_sedeId: { numero: c.numero, sedeId } },
+          where: {
+            numero_sedeId_tipoServicio: {
+              numero: c.numero,
+              sedeId,
+              tipoServicio: c.tipoServicio || null,
+            },
+          },
           create: {
             numero:       c.numero,
             abonado:      c.abonado,
@@ -488,13 +506,18 @@ const actualizarUbicacion = async (req, res, next) => {
 
     const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
-    const contrato = await prisma.contrato.findUnique({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+    const tipoServicioQuery = req.query.tipoServicio || undefined;
+    const contrato = await prisma.contrato.findFirst({
+      where: {
+        numero: req.params.numero,
+        sedeId,
+        ...(tipoServicioQuery && { tipoServicio: tipoServicioQuery }),
+      },
     });
     if (!contrato) return res.status(404).json({ error: 'Contrato no encontrado' });
 
     const actualizado = await prisma.contrato.update({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+      where: { id: contrato.id },
       data:  { latitud: lat, longitud: lng },
     });
 
@@ -523,13 +546,18 @@ const actualizarPrecinto = async (req, res, next) => {
 
     const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
-    const contrato = await prisma.contrato.findUnique({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+    const tipoServicioQuery = req.query.tipoServicio || undefined;
+    const contrato = await prisma.contrato.findFirst({
+      where: {
+        numero: req.params.numero,
+        sedeId,
+        ...(tipoServicioQuery && { tipoServicio: tipoServicioQuery }),
+      },
     });
     if (!contrato) return res.status(404).json({ error: 'Contrato no encontrado' });
 
     const actualizado = await prisma.contrato.update({
-      where: { numero_sedeId: { numero: req.params.numero, sedeId } },
+      where: { id: contrato.id },
       data:  { precinto: precinto || null },
     });
 

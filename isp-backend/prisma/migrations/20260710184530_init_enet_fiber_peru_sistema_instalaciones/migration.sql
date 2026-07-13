@@ -25,6 +25,9 @@ CREATE TYPE "TipoServicio" AS ENUM ('INTERNET', 'CABLE', 'DUO');
 -- CreateEnum
 CREATE TYPE "TipoNotificacion" AS ENUM ('ORDEN_PENDIENTE_WAN', 'ONU_ERROR_OLT', 'ENVIO_PENDIENTE_RECEPCION', 'STOCK_BAJO', 'STOCK_CRITICO');
 
+-- CreateEnum
+CREATE TYPE "TipoServicioSiscadre" AS ENUM ('INTERNET', 'CABLE', 'MIXTO');
+
 -- CreateTable
 CREATE TABLE "sedes" (
     "id" TEXT NOT NULL,
@@ -39,13 +42,6 @@ CREATE TABLE "sedes" (
     "correo_receptor" TEXT,
     "correo_emisor" TEXT,
     "correo_emisor_pass" TEXT,
-    "siscadre_host" TEXT,
-    "siscadre_port" INTEGER DEFAULT 3306,
-    "siscadre_user" TEXT,
-    "siscadre_password" TEXT,
-    "siscadre_database" TEXT,
-    "siscadre_script" TEXT,
-    "siscadre_last_sync" TIMESTAMP(3),
 
     CONSTRAINT "sedes_pkey" PRIMARY KEY ("id")
 );
@@ -138,6 +134,7 @@ CREATE TABLE "ordenes_servicio" (
     "estado" "EstadoOrden" NOT NULL DEFAULT 'PENDIENTE_NOC',
     "fechaServicio" TIMESTAMP(3) NOT NULL,
     "contrato" TEXT,
+    "tipoServicio" "TipoServicio",
     "pdfOriginalUrl" TEXT,
     "sedeId" TEXT,
     "abonado" TEXT NOT NULL,
@@ -676,6 +673,25 @@ CREATE TABLE "materiales_trabajo_pe" (
 );
 
 -- CreateTable
+CREATE TABLE "siscadre_conexiones" (
+    "id" TEXT NOT NULL,
+    "sedeId" TEXT NOT NULL,
+    "tipoServicio" "TipoServicioSiscadre" NOT NULL DEFAULT 'MIXTO',
+    "siscadreHost" TEXT NOT NULL,
+    "siscadrePort" INTEGER NOT NULL DEFAULT 3306,
+    "siscadreUser" TEXT NOT NULL,
+    "siscadrePassword" TEXT NOT NULL,
+    "siscadreDatabase" TEXT NOT NULL,
+    "siscadreScript" TEXT,
+    "siscadreLastSync" TIMESTAMP(3),
+    "activo" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "siscadre_conexiones_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "config_tipos_orden" (
     "codigo" TEXT NOT NULL,
     "label" TEXT NOT NULL,
@@ -728,7 +744,7 @@ CREATE INDEX "contratos_sedeId_idx" ON "contratos"("sedeId");
 CREATE INDEX "contratos_dni_idx" ON "contratos"("dni");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "contratos_numero_sedeId_key" ON "contratos"("numero", "sedeId");
+CREATE UNIQUE INDEX "contratos_numero_sedeId_tipoServicio_key" ON "contratos"("numero", "sedeId", "tipoServicio");
 
 -- CreateIndex
 CREATE INDEX "ordenes_servicio_contrato_idx" ON "ordenes_servicio"("contrato");
@@ -800,6 +816,9 @@ CREATE INDEX "idx_planes_internet_sede" ON "planes_internet"("sede_id");
 CREATE UNIQUE INDEX "tecnicos_trabajo_pe_trabajo_id_tecnico_id_key" ON "tecnicos_trabajo_pe"("trabajo_id", "tecnico_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "siscadre_conexiones_sedeId_tipoServicio_key" ON "siscadre_conexiones"("sedeId", "tipoServicio");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "password_reset_tokens_token_key" ON "password_reset_tokens"("token");
 
 -- AddForeignKey
@@ -821,7 +840,7 @@ ALTER TABLE "contratos" ADD CONSTRAINT "contratos_plan_id_fkey" FOREIGN KEY ("pl
 ALTER TABLE "contratos" ADD CONSTRAINT "contratos_sedeId_fkey" FOREIGN KEY ("sedeId") REFERENCES "sedes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ordenes_servicio" ADD CONSTRAINT "ordenes_servicio_contrato_sedeId_fkey" FOREIGN KEY ("contrato", "sedeId") REFERENCES "contratos"("numero", "sedeId") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ordenes_servicio" ADD CONSTRAINT "ordenes_servicio_contrato_sedeId_tipoServicio_fkey" FOREIGN KEY ("contrato", "sedeId", "tipoServicio") REFERENCES "contratos"("numero", "sedeId", "tipoServicio") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ordenes_servicio" ADD CONSTRAINT "ordenes_servicio_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "planes_internet"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -975,3 +994,6 @@ ALTER TABLE "materiales_trabajo_pe" ADD CONSTRAINT "materiales_trabajo_pe_trabaj
 
 -- AddForeignKey
 ALTER TABLE "materiales_trabajo_pe" ADD CONSTRAINT "materiales_trabajo_pe_producto_id_fkey" FOREIGN KEY ("producto_id") REFERENCES "productos"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "siscadre_conexiones" ADD CONSTRAINT "siscadre_conexiones_sedeId_fkey" FOREIGN KEY ("sedeId") REFERENCES "sedes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

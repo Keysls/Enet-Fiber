@@ -237,10 +237,8 @@ export const plantaExternaApi = {
 };
 
 export const siscadreApi = {
-  obtenerConfig:  (sedeId)       => api.get(`/siscadre/${sedeId}/config`),
-  guardarConfig:  (sedeId, data) => api.post(`/siscadre/${sedeId}/config`, data),
-  probarConexion: (sedeId, data) => api.post(`/siscadre/${sedeId}/probar`, data),
-  sincronizar:    (sedeId)       => api.post(`/siscadre/${sedeId}/sync`),
+  listarConexiones: (sedeId) => api.get(`/siscadre/${sedeId}/conexiones`),
+  sincronizar:      (sedeId) => api.post(`/siscadre/${sedeId}/sync`),
 };
 
 export default api;

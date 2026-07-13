@@ -41,13 +41,7 @@ model Sede {
   trabajosPE         TrabajoPlantaExterna[]
 
   // Siscadre
-  siscadreHost     String?  @map("siscadre_host")
-  siscadrePort     Int?     @map("siscadre_port") @default(3306)
-  siscadreUser     String?  @map("siscadre_user")
-  siscadrePassword String?  @map("siscadre_password")
-  siscadreDatabase String?  @map("siscadre_database")
-  siscadreScript   String?  @map("siscadre_script") @db.Text
-  siscadreLastSync DateTime? @map("siscadre_last_sync")
+  siscadreConexiones SiscadreConexion[]
 
   @@map("sedes")
 }
@@ -146,7 +140,7 @@ model Contrato {
   sede         Sede            @relation(fields: [sedeId], references: [id])
   ordenes      OrdenServicio[]
 
-  @@unique([numero, sedeId])
+  @@unique([numero, sedeId, tipoServicio])
   @@index([sedeId])
   @@index([dni])
   @@map("contratos")
@@ -160,6 +154,7 @@ model OrdenServicio {
   estado            EstadoOrden   @default(PENDIENTE_NOC)
   fechaServicio     DateTime
   contrato          String?
+  tipoServicio      TipoServicio?
   pdfOriginalUrl    String?
   sedeId            String?
   abonado           String
@@ -189,11 +184,11 @@ model OrdenServicio {
   deletedAt         DateTime?
   deletedBy         String?
   instalacion       Instalacion?
-  contratoRef       Contrato?     @relation(fields: [contrato, sedeId], references: [numero, sedeId])
+  contratoRef       Contrato?     @relation(fields: [contrato, sedeId, tipoServicio], references: [numero, sedeId, tipoServicio])
   plan              PlanInternet? @relation(fields: [planId], references: [id])
   sede              Sede?         @relation(fields: [sedeId], references: [id])
   tecnico           Tecnico?      @relation(fields: [tecnicoId], references: [id])
-
+  
   @@unique([nServicio, sedeId])
   @@index([contrato])
   @@map("ordenes_servicio")
@@ -865,6 +860,33 @@ enum TipoNotificacion {
   ENVIO_PENDIENTE_RECEPCION
   STOCK_BAJO
   STOCK_CRITICO
+}
+
+enum TipoServicioSiscadre {
+  INTERNET
+  CABLE
+  MIXTO
+}
+
+model SiscadreConexion {
+  id                String                @id @default(uuid())
+  sedeId            String
+  tipoServicio      TipoServicioSiscadre  @default(MIXTO)
+  siscadreHost      String
+  siscadrePort      Int                   @default(3306)
+  siscadreUser      String
+  siscadrePassword  String
+  siscadreDatabase  String
+  siscadreScript    String?               @db.Text
+  siscadreLastSync  DateTime?
+  activo            Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  sede Sede @relation(fields: [sedeId], references: [id])
+
+  @@unique([sedeId, tipoServicio])
+  @@map("siscadre_conexiones")
 }
 
 // ── Configuración dinámica de tipos de orden ──────────────────

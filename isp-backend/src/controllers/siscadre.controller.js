@@ -122,38 +122,48 @@ function parsearFecha(fechaStr) {
 }
 
 // ── Obtener config Siscadre de una sede ───────────────────────
-const obtenerConfig = async (req, res, next) => {
+// ── Listar todas las conexiones Siscadre de una sede ──────────
+const listarConexiones = async (req, res, next) => {
   try {
     const { sedeId } = req.params;
-    const sede = await prisma.sede.findUnique({
-      where: { id: sedeId },
+    const conexiones = await prisma.siscadreConexion.findMany({
+      where: { sedeId },
       select: {
         id:               true,
-        nombre:           true,
+        tipoServicio:     true,
         siscadreHost:     true,
         siscadrePort:     true,
         siscadreUser:     true,
         siscadreDatabase: true,
         siscadreScript:   true,
         siscadreLastSync: true,
+        activo:           true,
       },
+      orderBy: { tipoServicio: 'asc' },
     });
-    if (!sede) return res.status(404).json({ error: 'Sede no encontrada' });
-    res.json(sede);
+    res.json(conexiones);
   } catch (err) { next(err); }
 };
 
-// ── Guardar config Siscadre ───────────────────────────────────
-const guardarConfig = async (req, res, next) => {
+// ── Guardar (crear o actualizar) UNA conexión Siscadre ────────
+const guardarConexion = async (req, res, next) => {
   try {
     const { sedeId } = req.params;
-    const { host, port, user, password, database, script } = req.body;
+    const { tipoServicio, host, port, user, password, database, script } = req.body;
 
+    if (!tipoServicio || !['INTERNET', 'CABLE', 'MIXTO'].includes(tipoServicio)) {
+      return res.status(400).json({ error: 'tipoServicio debe ser INTERNET, CABLE o MIXTO' });
+    }
     if (!host || !user || !database) {
       return res.status(400).json({ error: 'Host, usuario y base de datos son obligatorios' });
     }
 
-    const dataUpdate = {
+    const existente = await prisma.siscadreConexion.findUnique({
+      where: { sedeId_tipoServicio: { sedeId, tipoServicio } },
+      select: { id: true },
+    });
+
+    const dataBase = {
       siscadreHost:     host,
       siscadrePort:     port ? Number(port) : 3306,
       siscadreUser:     user,
@@ -161,38 +171,55 @@ const guardarConfig = async (req, res, next) => {
       siscadreScript:   script || null,
     };
 
-    if (password) {
-      dataUpdate.siscadrePassword = encrypt(password);
+    if (existente) {
+      await prisma.siscadreConexion.update({
+        where: { id: existente.id },
+        data:  { ...dataBase, ...(password && { siscadrePassword: encrypt(password) }) },
+      });
+    } else {
+      if (!password) {
+        return res.status(400).json({ error: 'La contraseña es obligatoria para una conexión nueva' });
+      }
+      await prisma.siscadreConexion.create({
+        data: { sedeId, tipoServicio, ...dataBase, siscadrePassword: encrypt(password) },
+      });
     }
 
-    await prisma.sede.update({
-      where: { id: sedeId },
-      data:  dataUpdate,
-    });
-
-    res.json({ ok: true, mensaje: 'Configuración guardada' });
+    res.json({ ok: true, mensaje: 'Conexión guardada' });
   } catch (err) { next(err); }
+};
+
+// ── Eliminar una conexión ──────────────────────────────────────
+const eliminarConexion = async (req, res, next) => {
+  try {
+    await prisma.siscadreConexion.delete({ where: { id: req.params.id } });
+    res.json({ ok: true, mensaje: 'Conexión eliminada' });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Conexión no encontrada' });
+    next(err);
+  }
 };
 
 // ── Probar conexión ───────────────────────────────────────────
 const probarConexion = async (req, res, next) => {
   let conn;
   try {
-    const { sedeId } = req.params;
+    const { id } = req.params; // puede ser 'nueva' si aún no se guardó la conexión
     const { host, port, user, password, database } = req.body;
 
     let passwordFinal = password;
 
-    if (!passwordFinal) {
-      const sede = await prisma.sede.findUnique({
-        where: { id: sedeId },
+    // Solo buscar el password guardado si hay un id real (conexión existente)
+    if (!passwordFinal && id && id !== 'nueva') {
+      const conexion = await prisma.siscadreConexion.findUnique({
+        where: { id },
         select: { siscadrePassword: true },
       });
-      passwordFinal = sede?.siscadrePassword ? decrypt(sede.siscadrePassword) : null;
+      passwordFinal = conexion?.siscadrePassword ? decrypt(conexion.siscadrePassword) : null;
     }
 
     if (!host || !user || !passwordFinal || !database) {
-      return res.status(400).json({ error: 'Completa todos los campos' });
+      return res.status(400).json({ error: 'Completa todos los campos, incluyendo la contraseña' });
     }
 
     conn = await mysql.createConnection({
@@ -214,48 +241,28 @@ const probarConexion = async (req, res, next) => {
 };
 
 // ── Sincronizar órdenes desde Siscadre ───────────────────────
-const sincronizar = async (req, res, next) => {
+// ── Ejecutar el sync de UNA conexión específica ───────────────
+async function sincronizarConexion(conexion, sedeId) {
   let conn;
+  const resultado = { tipoServicio: conexion.tipoServicio, nuevas: 0, existentes: 0, errores: 0, total: 0, detalles: [] };
+
   try {
-    const { sedeId } = req.params;
-
-    const sede = await prisma.sede.findUnique({
-      where: { id: sedeId },
-      select: {
-        siscadreHost:     true,
-        siscadrePort:     true,
-        siscadreUser:     true,
-        siscadrePassword: true,
-        siscadreDatabase: true,
-        siscadreScript:   true,
-      },
-    });
-
-    if (!sede?.siscadreHost) {
-      return res.status(400).json({ error: 'Esta sede no tiene configuración de Siscadre' });
-    }
-
     conn = await mysql.createConnection({
-      host:           sede.siscadreHost,
-      port:           sede.siscadrePort || 3306,
-      user:           sede.siscadreUser,
-      password:       decrypt(sede.siscadrePassword),
-      database:       sede.siscadreDatabase,
+      host:           conexion.siscadreHost,
+      port:           conexion.siscadrePort || 3306,
+      user:           conexion.siscadreUser,
+      password:       decrypt(conexion.siscadrePassword),
+      database:       conexion.siscadreDatabase,
       connectTimeout: 15000,
     });
 
-    if (!sede.siscadreScript) {
-      return res.status(400).json({ error: 'Esta sede no tiene un script SQL configurado. Configúralo desde Sedes → Siscadre.' });
+    if (!conexion.siscadreScript) {
+      resultado.errorConexion = 'Esta conexión no tiene un script SQL configurado';
+      return resultado;
     }
 
-    const script = sede.siscadreScript;
-
-    const [rows] = await conn.execute(script);
-
-    let nuevas     = 0;
-    let existentes = 0;
-    let errores    = 0;
-    const detalles = [];
+    const [rows] = await conn.execute(conexion.siscadreScript);
+    resultado.total = rows.length;
 
     for (const row of rows) {
       const codigoCompleto = String(row['NÚMERO DE ORDEN']);
@@ -265,15 +272,16 @@ const sincronizar = async (req, res, next) => {
       const servicio  = row['SERVICIO'];
       const tipoOrden = detectarTipoOrden(servicio);
 
-      if (!tipoOrden) {
-        errores++;
-        detalles.push({
-          codigo: codigoCompleto,
-          estado: 'error',
-          motivo: `Servicio no reconocido: "${servicio}"`,
-        });
-        continue;
-      }
+      // DESPUÉS:
+        if (!tipoOrden) {
+          resultado.errores++;
+          resultado.detalles.push({
+            codigo: codigoCompleto,
+            estado: 'error',
+            motivo: `Servicio no reconocido: "${servicio}"`,
+          });
+          continue;
+        }
 
       try {
         const existe = await prisma.ordenServicio.findFirst({
@@ -282,8 +290,8 @@ const sincronizar = async (req, res, next) => {
         });
 
         if (existe) {
-          existentes++;
-          detalles.push({ codigo: codigoCompleto, estado: 'existe' });
+          resultado.existentes++;
+          resultado.detalles.push({ codigo: codigoCompleto, estado: 'existe' });
           continue;
         }
 
@@ -340,7 +348,7 @@ const sincronizar = async (req, res, next) => {
           // Actualizar mbps en el contrato si se resolvió un plan
           if (numeroContrato && planId) {
             await prisma.contrato.update({
-              where: { numero_sedeId: { numero: numeroContrato, sedeId } },
+              where: { numero_sedeId_tipoServicio: { numero: numeroContrato, sedeId, tipoServicio: (tipoOrden.endsWith('_I') ? 'INTERNET' : tipoOrden.endsWith('_C') ? 'CABLE' : 'DUO') } },
               data:  { mbps, planId },
             });
           }
@@ -349,6 +357,11 @@ const sincronizar = async (req, res, next) => {
           ? 'PENDIENTE_TECNICO'
           : (TIPOS_NOC.includes(tipoOrden) ? 'PENDIENTE_NOC' : 'PENDIENTE_TECNICO');
 
+        const tipoServicioOrden = tipoOrden.endsWith('_I') ? 'INTERNET'
+          : tipoOrden.endsWith('_C') ? 'CABLE'
+          : tipoOrden.endsWith('_D') ? 'DUO'
+          : null;
+
         await prisma.ordenServicio.create({
           data: {
             nServicio,
@@ -356,6 +369,7 @@ const sincronizar = async (req, res, next) => {
             sedeId,
             estado: estadoFinal,
             tipoOrden,
+            tipoServicio: tipoServicioOrden,
             fechaServicio: parsearFecha(row['FECHA CREA']),
             abonado,
             dni,
@@ -376,43 +390,66 @@ const sincronizar = async (req, res, next) => {
           },
         });
 
-        nuevas++;
-        detalles.push({ codigo: codigoCompleto, estado: 'importada' });
-
+        resultado.nuevas++;
+        resultado.detalles.push({ codigo: codigoCompleto, estado: 'importada' });
       
       } catch (err) {
         if (err.code === 'P2002') {
-          existentes++;
-          detalles.push({ codigo: codigoCompleto, estado: 'existe' });
-        } else {
+            resultado.existentes++;
+            resultado.detalles.push({ codigo: codigoCompleto, estado: 'existe' });
+          } else {
           throw err;
         }
       }
     }
 
-    await prisma.sede.update({
-      where: { id: sedeId },
+    await prisma.siscadreConexion.update({
+      where: { id: conexion.id },
       data:  { siscadreLastSync: new Date() },
-    });
-
-    res.json({
-      ok:         true,
-      total:      rows.length,
-      nuevas,
-      existentes,
-      errores,
-      syncAt:     new Date(),
-      detalles,
     });
 
   } catch (err) {
     if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
-      return res.status(400).json({ error: 'No se pudo conectar al servidor de Siscadre' });
+      resultado.errorConexion = 'No se pudo conectar al servidor de Siscadre';
+    } else {
+      throw err;
     }
-    next(err);
   } finally {
     if (conn) await conn.end().catch(() => {});
   }
+
+  return resultado;
+}
+
+// ── POST /api/siscadre/:sedeId/sync ───────────────────────────
+// Sincroniza TODAS las conexiones activas de la sede
+const sincronizar = async (req, res, next) => {
+  try {
+    const { sedeId } = req.params;
+
+    const conexiones = await prisma.siscadreConexion.findMany({
+      where: { sedeId, activo: true },
+    });
+
+    if (conexiones.length === 0) {
+      return res.status(400).json({ error: 'Esta sede no tiene ninguna conexión Siscadre configurada' });
+    }
+
+    const resultados = [];
+    for (const conexion of conexiones) {
+      resultados.push(await sincronizarConexion(conexion, sedeId));
+    }
+
+    const totales = resultados.reduce((acc, r) => ({
+      total:      acc.total      + r.total,
+      nuevas:     acc.nuevas     + r.nuevas,
+      existentes: acc.existentes + r.existentes,
+      errores:    acc.errores    + r.errores,
+    }), { total: 0, nuevas: 0, existentes: 0, errores: 0 });
+
+    res.json({ ok: true, ...totales, syncAt: new Date(), porConexion: resultados });
+
+  } catch (err) { next(err); }
 };
 
-module.exports = { guardarConfig, obtenerConfig, probarConexion, sincronizar };
+module.exports = { listarConexiones, guardarConexion, eliminarConexion, probarConexion, sincronizar };

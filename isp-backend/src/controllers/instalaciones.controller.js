@@ -337,16 +337,18 @@ const completar = async (req, res, next) => {
         instalacion.longitud != null &&
         instalacion.orden.contrato
       ) {
-        await tx.contrato.updateMany({
-          where: {
-            numero:  instalacion.orden.contrato,
-            latitud: null,   // solo si no tiene ya
-          },
-          data: {
-            latitud:  instalacion.latitud,
-            longitud: instalacion.longitud,
-          },
-        });
+          await tx.contrato.updateMany({
+            where: {
+              numero:  instalacion.orden.contrato,
+              sedeId:  instalacion.orden.sedeId,
+              tipoServicio: instalacion.orden.tipoServicio,
+              latitud: null,
+            },
+            data: {
+              latitud:  instalacion.latitud,
+              longitud: instalacion.longitud,
+            },
+          });
       }
 
       return inst;

@@ -281,11 +281,18 @@ export default function OrdenesPage() {
 
   const { usuario } = useAuthStore();
 
-  const { data: siscadreConfig } = useQuery({
-    queryKey: ['siscadre-config', usuario?.sedeId],
-    queryFn:  () => siscadreApi.obtenerConfig(usuario.sedeId).then(r => r.data),
+  const { data: siscadreConexiones = [] } = useQuery({
+    queryKey: ['siscadre-conexiones', usuario?.sedeId],
+    queryFn:  () => siscadreApi.listarConexiones(usuario.sedeId).then(r => r.data),
     enabled:  !!usuario?.sedeId,
   });
+
+  const tieneSiscadre = siscadreConexiones.length > 0;
+  // Último sync = el más reciente entre todas las conexiones de la sede
+  const ultimoSync = siscadreConexiones
+    .map(c => c.siscadreLastSync)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0] || null;
 
   const sincronizarMut = useMutation({
     mutationFn: () => siscadreApi.sincronizar(usuario.sedeId),
@@ -293,7 +300,7 @@ export default function OrdenesPage() {
       const { nuevas, existentes, total } = res.data;
       toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)`);
       qc.invalidateQueries(['ordenes']);
-      qc.invalidateQueries(['siscadre-config']);
+      qc.invalidateQueries(['siscadre-conexiones']);
     },
     onError: (e) => toast.error(e.response?.data?.error || 'Error al sincronizar'),
   });
@@ -355,7 +362,7 @@ export default function OrdenesPage() {
           </p>
         </div>
         <div className="ordenes-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {siscadreConfig?.siscadreHost ? (
+          {tieneSiscadre ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
               <Btn
                 variant="primary" size="sm"
@@ -365,9 +372,9 @@ export default function OrdenesPage() {
               >
                 {sincronizarMut.isPending ? 'Sincronizando...' : 'Sincronizar'}
               </Btn>
-              {siscadreConfig?.siscadreLastSync && (
+              {ultimoSync && (
                 <span style={{ fontSize: 10, color: 'var(--txt-3)', marginTop: 2 }}>
-                  Último: {fmtFechaHora(siscadreConfig.siscadreLastSync)}
+                  Último: {fmtFechaHora(ultimoSync)}
                 </span>
               )}
             </div>

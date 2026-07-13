@@ -47,12 +47,16 @@ const wanHeredableDelContrato = async (tx, numeroContrato, tipoOrden, sedeId) =>
   if (!TIPOS_NOC_TECNICO.includes(tipoOrden)) return null;
   if (!numeroContrato || !sedeId) return null;
 
+  const tipoServicio = tipoOrden.endsWith('_I') ? 'INTERNET'
+    : tipoOrden.endsWith('_C') ? 'CABLE'
+    : tipoOrden.endsWith('_D') ? 'DUO'
+    : null;
+
   const contrato = await tx.contrato.findUnique({
-    where:  { numero_sedeId: { numero: String(numeroContrato).trim(), sedeId } },
+    where:  { numero_sedeId_tipoServicio: { numero: String(numeroContrato).trim(), sedeId, tipoServicio } },
     select: { ipWan: true, mascara: true, gateway: true },
   });
 
-  // El contrato debe tener al menos la IP cargada
   if (!contrato?.ipWan) return null;
 
   return {
@@ -75,7 +79,6 @@ const upsertContratoDesdeOrden = async (tx, orden, sedeId) => {
 
   const numero = String(orden.contrato).trim();
 
-  // Inferir tipoServicio del tipo de orden
   const tipoServicio = orden.tipoOrden?.endsWith('_I')
     ? 'INTERNET'
     : orden.tipoOrden?.endsWith('_C')
@@ -85,7 +88,7 @@ const upsertContratoDesdeOrden = async (tx, orden, sedeId) => {
         : null;
 
   await tx.contrato.upsert({
-    where: { numero_sedeId: { numero, sedeId } },
+    where: { numero_sedeId_tipoServicio: { numero, sedeId, tipoServicio } },
     create: {
       numero,
       abonado:    orden.abonado,
@@ -104,8 +107,6 @@ const upsertContratoDesdeOrden = async (tx, orden, sedeId) => {
       ...(orden.celular    && { celular:    orden.celular }),
       ...(orden.referencia && { referencia: orden.referencia }),
       ...(orden.sector     && { sector:     orden.sector }),
-      // tipoServicio: NO actualizamos en update — si ya existe con valor
-      //  (porque vino del importador o de una orden anterior), lo respetamos
     },
   });
 
@@ -477,19 +478,30 @@ const wanHeredada = await wanHeredableDelContrato(tx, o.contrato, o.tipoOrden, s
         
           // ── Actualizar mbps en el contrato si se resolvió un plan ────
           // El plan más reciente siempre gana (refleja el plan actual del cliente)
-          if (o.contrato && planId) {
-            await tx.contrato.update({
-              where: { numero_sedeId: { numero: String(o.contrato).trim(), sedeId } },
-              data:  { mbps, planId },
-            });
-          }
+          // DESPUÉS:
+            if (o.contrato && planId) {
+              const tipoServicioContrato = o.tipoOrden.endsWith('_I') ? 'INTERNET'
+                : o.tipoOrden.endsWith('_C') ? 'CABLE'
+                : o.tipoOrden.endsWith('_D') ? 'DUO'
+                : null;
+              await tx.contrato.update({
+                where: { numero_sedeId_tipoServicio: { numero: String(o.contrato).trim(), sedeId, tipoServicio: tipoServicioContrato } },
+                data:  { mbps, planId },
+              });
+            }
           // ─────────────────────────────────────────────────────────────
         
           // 4. Crear la orden
+          const tipoServicioOrden = o.tipoOrden.endsWith('_I') ? 'INTERNET'
+            : o.tipoOrden.endsWith('_C') ? 'CABLE'
+            : o.tipoOrden.endsWith('_D') ? 'DUO'
+            : null;
+
           return tx.ordenServicio.create({
             data: {
               nServicio:     String(o.nServicio),
               tipoOrden:     o.tipoOrden,
+              tipoServicio:  tipoServicioOrden,
               estado:        estadoInicial,
               fechaServicio: new Date(o.fechaServicio),
               contrato:      o.contrato || null,
@@ -708,12 +720,16 @@ const ponerWan = async (req, res, next) => {
       });
 
       // 3. Copiar la WAN al contrato (fuente de verdad para órdenes futuras)
-      if (ordenWan.contrato && ordenWan.sedeId) {
-        await tx.contrato.updateMany({
-          where: { numero: ordenWan.contrato, sedeId: ordenWan.sedeId },
-          data:  { ipWan, mascara, gateway },
-        });
-      }
+        if (ordenWan.contrato && ordenWan.sedeId) {
+          await tx.contrato.updateMany({
+            where: {
+              numero:       ordenWan.contrato,
+              sedeId:       ordenWan.sedeId,
+              tipoServicio: ordenWan.tipoServicio,
+            },
+            data: { ipWan, mascara, gateway },
+          });
+        }
 
       return ordenWan;
     });
