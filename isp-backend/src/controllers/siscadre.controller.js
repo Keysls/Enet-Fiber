@@ -126,8 +126,12 @@ function parsearFecha(fechaStr) {
 const listarConexiones = async (req, res, next) => {
   try {
     const { sedeId } = req.params;
-    const conexiones = await prisma.siscadreConexion.findMany({
-      where: { sedeId },
+
+    if (req.usuario.rol !== 'SUPERADMIN' && sedeId !== req.usuario.sedeId) {
+      return res.status(403).json({ error: 'No tienes acceso a esta sede' });
+    }
+
+    const conexiones = await prisma.siscadreConexion.findMany({ where: { sedeId },
       select: {
         id:               true,
         tipoServicio:     true,
@@ -426,6 +430,10 @@ async function sincronizarConexion(conexion, sedeId) {
 const sincronizar = async (req, res, next) => {
   try {
     const { sedeId } = req.params;
+
+    if (req.usuario.rol !== 'SUPERADMIN' && sedeId !== req.usuario.sedeId) {
+      return res.status(403).json({ error: 'No tienes acceso a esta sede' });
+    }
 
     const conexiones = await prisma.siscadreConexion.findMany({
       where: { sedeId, activo: true },
