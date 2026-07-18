@@ -34,8 +34,7 @@ function useIsMobile(breakpoint = 1110) {
   return isMobile;
 }
 
-function DrawerWan({ open, onClose, orden, tiposTecnico }) {
-  const qc = useQueryClient();
+function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const qc = useQueryClient();
   const [copiado, setCopiado] = useState(false);
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [mostrarPegar,  setMostrarPegar]  = useState(false);
@@ -111,130 +110,155 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
   if (!orden) return null;
 
   const tipoColor = TIPO_COLOR[orden.tipoOrden] || '#666';
-  const tipoLabel = orden.tipoOrden;
+  const tipoLabel = tipoLabelFn ? tipoLabelFn(orden.tipoOrden) : orden.tipoOrden;
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title={`Orden #${orden.nServicio}${orden.contrato ? ' · ' + orden.contrato : ''}`}
-      subtitle={tipoLabel}
       accentColor={tipoColor}
       width={500}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-        {/* ── Datos del cliente — solo lectura por defecto ── */}
-        <section>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <SectionLabel>Datos del cliente</SectionLabel>
-            {!editandoDatos && (
-              <button onClick={() => setEditandoDatos(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 9px', borderRadius: 6,
-                  background: 'transparent', border: '1px solid var(--border-2)',
-                  cursor: 'pointer', fontSize: 11, color: 'var(--txt-2)', fontWeight: 600,
-                }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-2)'}>
-                <Pencil size={10}/> Editar
-              </button>
-            )}
-            {editandoDatos && (
-              <button onClick={() => {
-                // Cancelar: volver a los datos originales
-                setDatos({
-                  abonado: orden.abonado || '', contrato: orden.contrato || '',
-                  celular: orden.celular || '', direccion: orden.direccion || '',
-                  referencia: orden.referencia || '', sector: orden.sector || '',
-                  tipoOrden: orden.tipoOrden || 'INSTALACION_I', observacion: orden.observacion || '',
-                });
-                setEditandoDatos(false);
-              }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '4px 9px', borderRadius: 6,
-                  background: 'transparent', border: '1px solid var(--border-2)',
-                  cursor: 'pointer', fontSize: 11, color: 'var(--txt-3)', fontWeight: 600,
-                }}>
-                <X size={10}/> Cancelar
-              </button>
-            )}
-          </div>
-
-          {!editandoDatos ? (
-            /* Vista compacta — solo lectura */
-            <div style={{
-              background: 'var(--bg-3)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: '10px 14px',
-              display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px',
-              fontSize: 12,
+      header={
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{
+              fontFamily: 'monospace', fontWeight: 800,
+              fontSize: 16, color: '#3b9fd4',
             }}>
-              <span style={{ color: 'var(--txt-3)' }}>Abonado:</span>
-              <span style={{ color: 'var(--txt)', fontWeight: 600 }}>{datos.abonado || '—'}</span>
-
-              {datos.contrato && (<>
-                <span style={{ color: 'var(--txt-3)' }}>Contrato:</span>
-                <span style={{ color: 'var(--txt-2)', fontFamily: 'monospace' }}>{datos.contrato}</span>
-              </>)}
-
-              <span style={{ color: 'var(--txt-3)' }}>Dirección:</span>
-              <span style={{ color: 'var(--txt-2)' }}>{datos.direccion || '—'}</span>
-
-              {datos.referencia && (<>
-                <span style={{ color: 'var(--txt-3)' }}>Referencia:</span>
-                <span style={{ color: 'var(--txt-2)' }}>{datos.referencia}</span>
-              </>)}
-
-              {(datos.sector || datos.celular) && (<>
-                <span style={{ color: 'var(--txt-3)' }}>Zona/Cel:</span>
-                <span style={{ color: 'var(--txt-2)' }}>
-                  {[datos.sector, datos.celular].filter(Boolean).join(' · ')}
-                </span>
-              </>)}
-              {orden.mbps && (<>
-              <span style={{ color: 'var(--txt-3)' }}>Plan:</span>
-              <span style={{ color: '#2563EB', fontWeight: 700 }}>{orden.mbps} Mbps</span>
-            </>)}
-            </div>
-          ) : (
-            /* Vista editable */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field label="Abonado">
-                <input
-                  value={datos.abonado}
-                  onChange={e => setD('abonado', e.target.value.toUpperCase())}
-                  style={inputStyle}
-                  placeholder="NOMBRE APELLIDO"
-                />
-              </Field>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Contrato">
-                  <input value={datos.contrato} onChange={e => setD('contrato', e.target.value)} style={inputStyle} placeholder="C00000000000" />
-                </Field>
-                <Field label="Celular">
-                  <input value={datos.celular} onChange={e => setD('celular', e.target.value)} style={inputStyle} placeholder="9XXXXXXXX" />
-                </Field>
-              </div>
-              <Field label="Dirección">
-                <input value={datos.direccion} onChange={e => setD('direccion', e.target.value)} style={inputStyle} />
-              </Field>
-              <Field label="Referencia">
-                <input value={datos.referencia} onChange={e => setD('referencia', e.target.value)} style={inputStyle} placeholder="Cerca al parque..." />
-              </Field>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Field label="Zona / Sector">
-                  <input value={datos.sector} onChange={e => setD('sector', e.target.value)} style={inputStyle} placeholder="ZONA 11" />
-                </Field>
-                <Field label="Tipo de orden">
-                  <select value={datos.tipoOrden} onChange={e => setD('tipoOrden', e.target.value)} style={inputStyle}>
-                    {tiposTecnico.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-              </div>
+              #{orden.nServicio}
+            </span>
+            
+            <span style={{
+              fontSize: 11, fontWeight: 600,
+              color: tipoColor,
+              background: (tipoColor || '#3b9fd4') + '15',
+              padding: '2px 8px', borderRadius: 20,
+            }}>
+              {tipoLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
+            {datos.abonado || 'Sin nombre'}
+          </div>
+          {orden.fechaServicio && (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+              {fmtFecha(orden.fechaServicio)}
             </div>
           )}
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* ── Datos del cliente — tarjeta estilo admin ── */}
+        <section>
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}>
+            {/* Header de la tarjeta */}
+            <div style={{
+              padding: '10px 16px', borderBottom: '1px solid #f1f5f9',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Datos del cliente</span>
+              {!editandoDatos ? (
+                <button onClick={() => setEditandoDatos(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '4px 9px', borderRadius: 6,
+                    background: '#ffffff', border: '1px solid #e2e8f0',
+                  cursor: 'pointer', fontSize: 11, color: '#475569', fontWeight: 600,
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#3b9fd4'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
+                  <Pencil size={10}/> Editar
+                </button>
+              ) : (
+                <button onClick={() => {
+                  // Cancelar: volver a los datos originales
+                  setDatos({
+                    abonado: orden.abonado || '', contrato: orden.contrato || '',
+                    celular: orden.celular || '', direccion: orden.direccion || '',
+                    referencia: orden.referencia || '', sector: orden.sector || '',
+                    tipoOrden: orden.tipoOrden || 'INSTALACION_I', observacion: orden.observacion || '',
+                  });
+                  setEditandoDatos(false);
+                }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '4px 9px', borderRadius: 6,
+                    background: '#ffffff', border: '1px solid #e2e8f0',
+                  cursor: 'pointer', fontSize: 11, color: '#94a3b8', fontWeight: 600,
+                    fontFamily: 'inherit',
+                  }}>
+                  <X size={10}/> Cancelar
+                </button>
+              )}
+            </div>
+
+            {!editandoDatos ? (
+              /* Vista solo lectura — filas estilo admin */
+              <div style={{ padding: '0 16px' }}>
+                <FilaLectura label="Abonado" value={datos.abonado || '—'} bold />
+                {datos.contrato   && <FilaLectura label="Contrato"   value={datos.contrato} mono />}
+                {datos.celular    && <FilaLectura label="Celular"    value={datos.celular} mono />}
+                <FilaLectura label="Dirección" value={datos.direccion || '—'} />
+                {datos.referencia && <FilaLectura label="Referencia" value={datos.referencia} />}
+                {datos.sector     && <FilaLectura label="Sector"     value={datos.sector} />}
+                {orden.mbps       && <FilaLectura label="Plan"       value={`${orden.mbps} Mbps`} bold color="#2563eb" last />}
+
+                {datos.observacion && (
+                  <div style={{
+                    margin: '8px 0 12px', padding: '8px 12px',
+                    background: '#fffbeb', borderRadius: 8,
+                    border: '1px solid #fde68a',
+                    fontSize: 12, color: '#92400e',
+                  }}>
+                    ⚠ {datos.observacion}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Vista editable */
+              <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Field label="Abonado">
+                  <input
+                    value={datos.abonado}
+                    onChange={e => setD('abonado', e.target.value.toUpperCase())}
+                    style={inputStyle}
+                    placeholder="NOMBRE APELLIDO"
+                  />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Field label="Contrato">
+                    <input value={datos.contrato} onChange={e => setD('contrato', e.target.value)} style={inputStyle} placeholder="C00000000000" />
+                  </Field>
+                  <Field label="Celular">
+                    <input value={datos.celular} onChange={e => setD('celular', e.target.value)} style={inputStyle} placeholder="9XXXXXXXX" />
+                  </Field>
+                </div>
+                <Field label="Dirección">
+                  <input value={datos.direccion} onChange={e => setD('direccion', e.target.value)} style={inputStyle} />
+                </Field>
+                <Field label="Referencia">
+                  <input value={datos.referencia} onChange={e => setD('referencia', e.target.value)} style={inputStyle} placeholder="Cerca al parque..." />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Field label="Zona / Sector">
+                    <input value={datos.sector} onChange={e => setD('sector', e.target.value)} style={inputStyle} placeholder="ZONA 11" />
+                  </Field>
+                  <Field label="Tipo de orden">
+                    <select value={datos.tipoOrden} onChange={e => setD('tipoOrden', e.target.value)} style={inputStyle}>
+                      {tiposTecnico.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
          {/* ── Línea de copia rápida: NOMBRE - CONTRATO ── */}
@@ -242,13 +266,13 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px',
-            background: 'rgba(59,159,212,0.06)',
-            border: '1px solid rgba(59,159,212,0.2)',
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
             borderRadius: 8,
           }}>
             <span style={{
               flex: 1, fontSize: 12, fontWeight: 600,
-              color: 'var(--txt)', fontFamily: 'monospace',
+              color: '#0f172a', fontFamily: 'monospace',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {[datos.abonado, datos.contrato, orden.mbps ? `${orden.mbps} Mbps` : null].filter(Boolean).join(' - ')}
@@ -261,15 +285,16 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
               }}
               style={{
                 padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
-                background: copiado ? 'rgba(34,197,94,0.15)' : '#fff',
-                border: copiado ? '1px solid rgba(34,197,94,0.4)' : '1px solid var(--border-2)',
-                color: copiado ? 'var(--green)' : 'var(--txt-2)',
+                background: copiado ? '#dcfce7' : '#ffffff',
+                border: copiado ? '1px solid #86efac' : '1px solid #e2e8f0',
+                color: copiado ? '#16a34a' : '#475569',
                 fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
                 transition: 'all .15s',
               }}
-              onMouseEnter={e => { if (!copiado) e.currentTarget.style.borderColor = '#3B9FD4'; }}
-              onMouseLeave={e => { if (!copiado) e.currentTarget.style.borderColor = 'var(--border-2)'; }}
+              onMouseEnter={e => { if (!copiado) e.currentTarget.style.borderColor = '#3b9fd4'; }}
+              onMouseLeave={e => { if (!copiado) e.currentTarget.style.borderColor = '#e2e8f0'; }}
             >
               {copiado ? '✓ Copiado' : '📋 Copiar'}
             </button>
@@ -278,50 +303,58 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
 
         <Divider />
 
-      
-
-         {/* ── Datos WAN — siempre editables, lo principal ── */}
+         {/* ── Datos WAN — tarjeta estilo admin ── */}
         <section>
-          <div style={{ marginBottom: 12 }}>
-            <SectionLabel>Datos de conexión WAN</SectionLabel>
-          </div>
-
-          {esEdicion && orden.ipWan && (
-            <div style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--red)', marginBottom: 2, fontWeight: 600 }}>WAN actual — será reemplazada</div>
-              <div style={{ fontSize: 11, color: 'var(--txt-2)', fontFamily: 'monospace' }}>
-                {orden.ipWan} / {orden.mascara} → {orden.gateway}
-              </div>
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}>
+            {/* Header de la tarjeta */}
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>Datos de conexión WAN</span>
             </div>
-          )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <Field label="IP WAN *" error={erroresWan.ipWan}>
-              <input
-                value={wan.ipWan}
-                onChange={e => setW('ipWan', e.target.value)}
-                style={{ ...inputStyle, ...(erroresWan.ipWan ? { borderColor: 'var(--red)' } : {}) }}
-                placeholder="200.x.x.x"
-                autoFocus
-              />
-            </Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <Field label="Máscara *" error={erroresWan.mascara}>
-                <input
-                  value={wan.mascara}
-                  onChange={e => setW('mascara', e.target.value)}
-                  style={{ ...inputStyle, ...(erroresWan.mascara ? { borderColor: 'var(--red)' } : {}) }}
-                  placeholder="255.255.255.0"
-                />
-              </Field>
-              <Field label="Gateway *" error={erroresWan.gateway}>
-                <input
-                  value={wan.gateway}
-                  onChange={e => setW('gateway', e.target.value)}
-                  style={{ ...inputStyle, ...(erroresWan.gateway ? { borderColor: 'var(--red)' } : {}) }}
-                  placeholder="200.x.x.1"
-                />
-              </Field>
+            <div style={{ padding: '12px 16px' }}>
+              {esEdicion && orden.ipWan && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: '#dc2626', marginBottom: 2, fontWeight: 600 }}>WAN actual — será reemplazada</div>
+                  <div style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
+                    {orden.ipWan} / {orden.mascara} → {orden.gateway}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Field label="IP WAN *" error={erroresWan.ipWan}>
+                  <input
+                    value={wan.ipWan}
+                    onChange={e => setW('ipWan', e.target.value)}
+                    style={{ ...inputStyle, ...(erroresWan.ipWan ? { borderColor: '#dc2626' } : {}) }}
+                    placeholder="200.x.x.x"
+                    autoFocus
+                  />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Field label="Máscara *" error={erroresWan.mascara}>
+                    <input
+                      value={wan.mascara}
+                      onChange={e => setW('mascara', e.target.value)}
+                      style={{ ...inputStyle, ...(erroresWan.mascara ? { borderColor: '#dc2626' } : {}) }}
+                      placeholder="255.255.255.0"
+                    />
+                  </Field>
+                  <Field label="Gateway *" error={erroresWan.gateway}>
+                    <input
+                      value={wan.gateway}
+                      onChange={e => setW('gateway', e.target.value)}
+                      style={{ ...inputStyle, ...(erroresWan.gateway ? { borderColor: '#dc2626' } : {}) }}
+                      placeholder="200.x.x.1"
+                    />
+                  </Field>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -334,10 +367,11 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
             padding: '13px 20px', borderRadius: 10,
             cursor: (mutActualizar.isPending || !datos.abonado) ? 'not-allowed' : 'pointer',
             background: (mutActualizar.isPending || !datos.abonado)
-              ? 'var(--bg-3)'
+              ? '#e2e8f0'
               : 'linear-gradient(135deg, #1E3A8A, #3B9FD4)',
-            color: (mutActualizar.isPending || !datos.abonado) ? 'var(--txt-3)' : '#fff',
+            color: (mutActualizar.isPending || !datos.abonado) ? '#94a3b8' : '#fff',
             fontSize: 13, fontWeight: 700, border: 'none',
+            fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             transition: 'opacity .15s',
             opacity: mutActualizar.isPending ? 0.7 : 1,
@@ -356,7 +390,7 @@ function DrawerWan({ open, onClose, orden, tiposTecnico }) {
   );
 }
 
-function DrawerNocCompletar({ open, onClose, orden }) {
+function DrawerNocCompletar({ open, onClose, orden, tipoLabelFn }) {
   const qc = useQueryClient();
   const [comentario, setComentario] = useState('');
 
@@ -378,33 +412,58 @@ function DrawerNocCompletar({ open, onClose, orden }) {
   if (!orden) return null;
 
   const tipoColor = TIPO_COLOR[orden.tipoOrden] || '#666';
-  const tipoLabel = orden.tipoOrden;
+  const tipoLabel = tipoLabelFn ? tipoLabelFn(orden.tipoOrden) : orden.tipoOrden;
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title={`Orden #${orden.nServicio}${orden.contrato ? ' · ' + orden.contrato : ''}`}
-      subtitle={tipoLabel}
       accentColor={tipoColor}
-      width={440}
+      width={500}
+      header={
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{
+              fontFamily: 'monospace', fontWeight: 800,
+              fontSize: 16, color: '#3b9fd4',
+            }}>
+              #{orden.nServicio}
+            </span>
+            <span style={{
+              fontSize: 11, fontWeight: 600,
+              color: tipoColor,
+              background: (tipoColor || '#3b9fd4') + '15',
+              padding: '2px 8px', borderRadius: 20,
+            }}>
+              {tipoLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', lineHeight: 1.3 }}>
+            {orden.abonado || 'Sin nombre'}
+          </div>
+          {orden.fechaServicio && (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+              {fmtFecha(orden.fechaServicio)}
+            </div>
+          )}
+        </>
+      }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-        <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '14px 16px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--txt)', marginBottom: 6 }}>{orden.abonado}</div>
+        <div style={{ background: '#ffffff', borderRadius: 10, padding: '14px 16px', border: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>{orden.abonado}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: tipoColor + '20', color: tipoColor, border: `1px solid ${tipoColor}35` }}>
               {tipoLabel}
             </span>
-            {orden.contrato && <span style={{ fontSize: 11, color: 'var(--txt-3)', alignSelf: 'center' }}>{orden.contrato}</span>}
+            {orden.contrato && <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center', fontFamily: 'monospace' }}>{orden.contrato}</span>}
           </div>
-          {orden.direccion && <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 4 }}>📍 {orden.direccion}</div>}
-          {orden.celular   && <div style={{ fontSize: 12, color: 'var(--txt-2)', marginTop: 2 }}>{orden.celular}</div>}
+          {orden.direccion && <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>📍 {orden.direccion}</div>}
+          {orden.celular   && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>{orden.celular}</div>}
         </div>
 
-        <div style={{ padding: '10px 14px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, fontSize: 12, color: 'var(--green)' }}>
-          ✓ Esta orden se completará directamente desde el NOC sin pasar por el técnico.
+<div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, color: '#16a34a' }}>          ✓ Esta orden se completará directamente desde el NOC sin pasar por el técnico.
         </div>
 
         <Field label="Comentario (opcional)">
@@ -419,12 +478,12 @@ function DrawerNocCompletar({ open, onClose, orden }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{
             flex: 1, padding: '11px', borderRadius: 9, cursor: 'pointer',
-            background: 'transparent', color: 'var(--txt-2)', fontSize: 13, fontWeight: 600,
-            border: '1px solid var(--border-2)', transition: 'border-color .15s',
+            background: '#ffffff', color: '#475569', fontSize: 13, fontWeight: 600,
+            border: '1px solid #e2e8f0', transition: 'border-color .15s',
+            fontFamily: 'inherit',
           }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--txt-3)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-2)'}
-          >
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#94a3b8'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
             Cancelar
           </button>
           <button
@@ -435,8 +494,8 @@ function DrawerNocCompletar({ open, onClose, orden }) {
               cursor: mut.isPending ? 'not-allowed' : 'pointer',
               background: 'linear-gradient(135deg,#15803d,#16a34a)', color: '#fff',
               fontSize: 13, fontWeight: 700, border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-              opacity: mut.isPending ? 0.7 : 1, transition: 'opacity .15s',
+              fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,opacity: mut.isPending ? 0.7 : 1, transition: 'opacity .15s',
             }}
           >
             <CheckCheck size={14} />
@@ -450,14 +509,15 @@ function DrawerNocCompletar({ open, onClose, orden }) {
 
 const inputStyle = {
   width: '100%', padding: '9px 12px',
-  background: 'var(--bg-3)', border: '1px solid var(--border-2)',
-  borderRadius: 8, color: 'var(--txt)', fontSize: 13, outline: 'none',
+  background: '#f8fafc', border: '1px solid #e2e8f0',
+  borderRadius: 8, color: '#0f172a', fontSize: 13, outline: 'none',
   transition: 'border-color .15s', boxSizing: 'border-box',
+  fontFamily: 'inherit',
 };
 
 function SectionLabel({ children }) {
   return (
-    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+    <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
       {children}
     </div>
   );
@@ -466,17 +526,41 @@ function SectionLabel({ children }) {
 function Field({ label, error, children }) {
   return (
     <div>
-      <label style={{ fontSize: 11, color: error ? 'var(--red)' : 'var(--txt-3)', display: 'block', marginBottom: 5, fontWeight: 500 }}>
+      <label style={{ fontSize: 11, color: error ? '#dc2626' : '#64748b', display: 'block', marginBottom: 5, fontWeight: 500 }}>
         {label}
       </label>
       {children}
-      {error && <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 3 }}>{error}</div>}
+      {error && <div style={{ fontSize: 10, color: '#dc2626', marginTop: 3 }}>{error}</div>}
     </div>
   );
 }
 
 function Divider() {
-  return <div style={{ height: 1, background: 'var(--border)' }} />;
+  return <div style={{ height: 1, background: '#e2e8f0' }} />;
+}
+
+function FilaLectura({ label, value, mono, bold, color, last }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      padding: '9px 0',
+      borderBottom: last ? 'none' : '1px solid #f1f5f9',
+      gap: 12,
+    }}>
+      <span style={{ fontSize: 12, color: '#94a3b8', minWidth: 80, flexShrink: 0 }}>
+        {label}
+      </span>
+      <span style={{
+        flex: 1, fontSize: 13,
+        color: color || '#0f172a',
+        fontWeight: bold ? 700 : 500,
+        fontFamily: mono ? 'monospace' : 'inherit',
+        wordBreak: 'break-word',
+      }}>
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function TecnicoCell({ tecnico, compact }) {
@@ -1040,8 +1124,7 @@ const { data: dataConfiguradas } = useQuery({
         </div>
       )}
 
-      <DrawerWan          open={!!ordenWan}       onClose={() => setOrdenWan(null)}       orden={ordenWan} tiposTecnico={TODOS_TECNICO} />
-      <DrawerNocCompletar open={!!ordenCompletar} onClose={() => setOrdenCompletar(null)} orden={ordenCompletar} />
+  <DrawerWan          open={!!ordenWan}       onClose={() => setOrdenWan(null)}       orden={ordenWan} tiposTecnico={TODOS_TECNICO} tipoLabelFn={tipoLabelFn} />      <DrawerNocCompletar open={!!ordenCompletar} onClose={() => setOrdenCompletar(null)} orden={ordenCompletar} tipoLabelFn={tipoLabelFn} />
     </div>
   );
 }
