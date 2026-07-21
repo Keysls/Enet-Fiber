@@ -10,6 +10,9 @@ require('dotenv').config();
 
 const app = express();
 
+// ─── Confiar en el proxy (Traefik/Dokploy) para obtener la IP real del cliente ──
+app.set('trust proxy', 1);
+
 // ─── Seguridad: Helmet con headers estrictos ───────────────────
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -53,7 +56,7 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 // ─── Rate limiting global ──────────────────────────────────────
 const limitadorGlobal = rateLimit({
   windowMs: 15 * 60 * 1000,  // 15 minutos
-  max:      500,              // 500 requests por IP
+  max:      1000,             // 1000 requests por IP
   standardHeaders: true,
   legacyHeaders:   false,
   message: { error: 'Demasiadas solicitudes, intenta en 15 minutos' },

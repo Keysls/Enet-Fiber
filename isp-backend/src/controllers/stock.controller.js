@@ -1138,6 +1138,7 @@ const miInventario = async (req, res, next) => {
         },
         orderBy: { fecha: 'desc' },
       }),
+      /*
       // Consumos registrados (material gastado)
       prisma.consumoTecnico.findMany({
         where: { 
@@ -1145,6 +1146,19 @@ const miInventario = async (req, res, next) => {
             ...(sedeId && { sedeId }),
           },
         include: { producto: { select: { id: true, nombre: true, codigo: true } } },
+        orderBy: { fecha: 'desc' },
+        take: 100,
+      }),
+      // ONUs asignadas
+      // */
+
+            // Consumos registrados (material gastado)
+      prisma.consumoTecnico.findMany({
+        where: {
+            tecnicoId,
+            ...(sedeId && { sedeId }),
+          },
+        include: { producto: { select: { id: true, nombre: true, codigo: true, esMedible: true, metrosPorUnidad: true } } },
         orderBy: { fecha: 'desc' },
         take: 100,
       }),
@@ -1249,6 +1263,32 @@ for (const o of onus) {
             if (orden) ordenInfo = orden;
           }
         }
+
+        // Para productos medibles (rollos), consumoTecnico.cantidad se guarda en
+        // "unidades" (la app móvil ya convierte metros→unidades antes de enviar,
+        // ver registrarConsumo más abajo) — hay que reconvertir a metros aquí para
+        // mostrarle al técnico lo mismo que él ingresó (150 m, no 0.15).
+        const esMedible = c.producto.esMedible && c.producto.metrosPorUnidad;
+        const cantBase  = Number(c.cantidad);
+        const cantidad  = esMedible ? cantBase * c.producto.metrosPorUnidad : cantBase;
+
+        return {
+          productoId:  c.productoId,
+          nombre:      c.producto.nombre,
+          cantidad,
+          unidad:      esMedible ? 'm' : null,
+          motivo:      c.motivo,
+          descripcion: c.descripcion,
+          fecha:       c.fecha,
+          // Datos legibles de la orden
+          nServicio:   ordenInfo?.nServicio || null,
+          abonado:     ordenInfo?.abonado   || null,
+          contrato:    ordenInfo?.contrato  || null,
+        };
+      })
+    );
+
+        /*
         return {
           productoId:  c.productoId,
           nombre:      c.producto.nombre,
@@ -1262,7 +1302,7 @@ for (const o of onus) {
           contrato:    ordenInfo?.contrato  || null,
         };
       })
-    );
+    );*/
 
     res.json({
       tecnicoId,
