@@ -881,10 +881,9 @@ const auditoriaControlador = async (req, res, next) => {
       })),
       
       ...(await Promise.all(consumos.map(async c => {
-        const cantBase = Number(c.cantidad);
-        const esMedible = c.producto.esMedible && c.producto.metrosPorUnidad;
-        const cantMostrar = esMedible ? cantBase * c.producto.metrosPorUnidad : cantBase;
-
+         const cantBase = Number(c.cantidad);
+          const esMedible = c.producto.esMedible && c.producto.metrosPorUnidad;
+          const cantMostrar = cantBase; // ya viene en metros, no reconvertir
         // Buscar contrato/abonado desde la descripción "Orden: uuid"
         let nServicio = null, abonado = null, contrato = null;
         if (c.descripcion) {
@@ -903,7 +902,7 @@ const auditoriaControlador = async (req, res, next) => {
           item: c.codigoPon 
             ? `${c.producto.nombre} — ${c.codigoPon}` 
             : c.producto.nombre,
-          cantidad: esMedible ? `${cantMostrar % 1 === 0 ? cantMostrar : cantMostrar.toFixed(1)} m` : cantMostrar,
+          cantidad: esMedible ? `${cantMostrar} m` : cantMostrar,
           tecnico_id:     c.tecnicoId,
           tecnico_nombre: c.tecnico?.usuario ? `${c.tecnico.usuario.nombre} ${c.tecnico.usuario.apellido}`.trim() : null,
           motivo: c.motivo,
@@ -1007,10 +1006,10 @@ const inventarioTecnico = async (req, res, next) => {
           }
         }
         const esMedible = c.producto.esMedible && c.producto.metrosPorUnidad;
-        const cantBase  = Number(c.cantidad);
-        return {
-          nombre:      c.producto.nombre,
-          cantidad:    esMedible ? cantBase * c.producto.metrosPorUnidad : cantBase,
+       const cantBase  = Number(c.cantidad);
+       return {
+         nombre:      c.producto.nombre,
+         cantidad:    cantBase, // ya viene en metros
           unidad:      esMedible ? 'm' : null,
           fecha:       c.fecha,
           descripcion: c.descripcion,
@@ -1215,12 +1214,18 @@ for (const o of onus) {
       // Si es producto normal, disponible = asignado - consumido
       const esOnu = onusPorProducto[a.productoId] !== undefined || 
         onus.some(o => o.productoId === a.productoId);
-      const utilizado = esOnu ? 0 : (consumoPorProducto[a.productoId] || 0);
-      const disponible = esOnu 
+
+          const esMedible      = a.producto.esMedible || false;
+          const metrosPorUnidad = a.producto.metrosPorUnidad || null;
+          const asignadoBase   = esMedible && metrosPorUnidad ? asignado * metrosPorUnidad : asignado;
+      
+          const utilizado = esOnu ? 0 : (consumoPorProducto[a.productoId] || 0); // ya en metros si es medible
+      
+          const disponible = esOnu 
         ? (onusPorProducto[a.productoId] || 0)
-        : Math.max(0, asignado - utilizado);
-      const esMedible      = a.producto.esMedible || false;
-      const metrosPorUnidad = a.producto.metrosPorUnidad || null;
+
+        : Math.max(0, asignadoBase - utilizado);
+
       return {
         productoId:       a.productoId,
         nombre:           a.producto.nombre,
@@ -1235,9 +1240,9 @@ for (const o of onus) {
         esMedible,
         metrosPorUnidad,
         // Valores en metros para mostrar al técnico
-        asignadoMetros:   esMedible && metrosPorUnidad ? asignado * metrosPorUnidad : null,
-        utilizadoMetros:  esMedible && metrosPorUnidad ? utilizado * metrosPorUnidad : null,
-        disponibleMetros: esMedible && metrosPorUnidad ? Math.max(0, disponible * metrosPorUnidad) : null,
+        asignadoMetros:   esMedible && metrosPorUnidad ? asignadoBase : null,
+        utilizadoMetros:  esMedible && metrosPorUnidad ? utilizado : null,
+        disponibleMetros: esMedible && metrosPorUnidad ? disponible : null,
       };
     });
 
@@ -1264,14 +1269,9 @@ for (const o of onus) {
           }
         }
 
-        // Para productos medibles (rollos), consumoTecnico.cantidad se guarda en
-        // "unidades" (la app móvil ya convierte metros→unidades antes de enviar,
-        // ver registrarConsumo más abajo) — hay que reconvertir a metros aquí para
-        // mostrarle al técnico lo mismo que él ingresó (150 m, no 0.15).
+        // ConsumoTecnico.cantidad ahora se guarda directo en metros enteros — no reconvertir.
         const esMedible = c.producto.esMedible && c.producto.metrosPorUnidad;
-        const cantBase  = Number(c.cantidad);
-        const cantidad  = esMedible ? cantBase * c.producto.metrosPorUnidad : cantBase;
-
+        const cantidad  = Number(c.cantidad);
         return {
           productoId:  c.productoId,
           nombre:      c.producto.nombre,
@@ -1413,10 +1413,16 @@ const registrarConsumo = async (req, res, next) => {
     // y gastaba el reciclado en vez del normal).
     const recojosAMarcarPorItem = [];
     for (const item of itemsNormalizados) {
-      const unidadesConsumidas = Math.floor(Number(item.cantidad));
-      if (unidadesConsumidas <= 0) continue;
       if (item.codigoPon) continue; // ONUs no usan este flujo de recojos por cantidad
 
+      const producto = await prisma.producto.findUnique({
+       where: { id: item.productoId },
+       select: { esMedible: true },
+     });
+     if (producto?.esMedible) continue; // el cable/rollos no usa recojos por serie
+
+     const unidadesConsumidas = Math.floor(Number(item.cantidad));
+     if (unidadesConsumidas <= 0) continue;
       const asignacion = await prisma.asignacionTecnico.findFirst({
         where: { tecnicoId: tecnico.id, productoId: item.productoId },
         select: { cantidad: true },
@@ -1471,11 +1477,15 @@ const registrarConsumo = async (req, res, next) => {
 for (const item of itemsNormalizados) {
   const producto = await prisma.producto.findUnique({
     where: { id: item.productoId },
-    select: { categoria: true, nombre: true },
+    select: { categoria: true, nombre: true, esMedible: true },
   });
+
+
   const esOnu = `${producto?.categoria || ''} ${producto?.nombre || ''}`.toLowerCase().includes('onu')
     || `${producto?.categoria || ''} ${producto?.nombre || ''}`.toLowerCase().includes('ont');
-  if (!esOnu) {
+  
+    if (!esOnu && !producto?.esMedible) {
+
     await prisma.producto.updateMany({
       where: { id: item.productoId, stockTotal: { gte: item.cantidad } },
       data:  { stockTotal: { decrement: item.cantidad } },

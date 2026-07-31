@@ -536,7 +536,7 @@ model ConsumoTecnico {
   id          Int      @id @default(autoincrement())
   tecnicoId   String   @map("tecnico_id")
   productoId  Int      @map("producto_id")
-  cantidad    Decimal  @db.Decimal(10, 2)
+  cantidad    Int
   motivo      String
   descripcion String?
   sedeId      String?
@@ -683,10 +683,10 @@ model DevolucionDetalle {
   id            Int               @id @default(autoincrement())
   devolucionId  Int               @map("devolucion_id")
   productoId    Int               @map("producto_id")
-  cantidad      Decimal           @db.Decimal(10, 2)
+  cantidad      Int?
   estado        String            @default("pendiente")   // pendiente | en_revision | revisado
-  cantidadBuena Decimal?          @map("cantidad_buena") @db.Decimal(10, 2)
-  cantidadMala  Decimal?          @map("cantidad_mala")  @db.Decimal(10, 2)
+  cantidadBuena Int?              @map("cantidad_buena")
+  cantidadMala  Int?              @map("cantidad_mala")
   comentario    String?
   revisadoPor   String?           @map("revisado_por")
   fechaRevision DateTime?         @map("fecha_revision")
@@ -752,7 +752,7 @@ model MaterialTrabajoPE {
   id          Int      @id @default(autoincrement())
   trabajoId   String   @map("trabajo_id")
   productoId  Int      @map("producto_id")
-  cantidad    Decimal  @db.Decimal(10, 2)
+  cantidad    Int
   registradoPor String @map("registrado_por")
   fecha       DateTime @default(now())
   comentario  String?
