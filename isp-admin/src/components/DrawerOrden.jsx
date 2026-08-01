@@ -206,10 +206,8 @@ export default function DrawerOrden({ ordenId, onCerrar }) {
                     </span>
                   </div>
                   {orden.consumos.map((c, i) => {
-                    const esMedible = c.producto?.esMedible && c.producto?.metrosPorUnidad;
-                    const valor = esMedible
-                      ? Number(c.cantidad) * c.producto.metrosPorUnidad
-                      : Number(c.cantidad);
+                    const esMedible = c.producto?.esMedible;
+                    const valor = Number(c.cantidad);
                     const unidad = esMedible ? 'm' : (c.producto?.unidad || 'und');
                     const ultima = i === orden.consumos.length - 1;
                     return (
@@ -325,10 +323,8 @@ export default function DrawerOrden({ ordenId, onCerrar }) {
 
                     if (!esRetiro && orden.consumos?.length > 0) {
                       const items = orden.consumos.map(c => {
-                        const esMedible = c.producto?.esMedible && c.producto?.metrosPorUnidad;
-                        const valor = esMedible
-                          ? Number(c.cantidad) * c.producto.metrosPorUnidad
-                          : Number(c.cantidad);
+                        const esMedible = c.producto?.esMedible;
+                        const valor = Number(c.cantidad);
                         const unidad = esMedible ? 'm' : (c.producto?.unidad || 'und');
                         const pon = c.codigoPon ? ` (◈ ${c.codigoPon})` : '';
                         return `${c.producto?.nombre}${pon}: ${valor % 1 === 0 ? valor : valor.toFixed(1)} ${unidad}`;

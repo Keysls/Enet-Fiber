@@ -103,15 +103,21 @@ function PanelInventario({ tecnico, onClose }) {
     let gastado, disponible, codigosPon = [];
 
     if (esOnu) {
-      // Para ONUs: disponible = cantidad de ONUs con codigoPon asignadas a este técnico
-      const onusDesteProducto = (data?.onus || []).filter(o => o.producto === a.nombre);
-      disponible = onusDesteProducto.length;
-      gastado    = Math.max(0, Number(a.cantidad) - disponible);
-      codigosPon = onusDesteProducto.map(o => o.codigoPon).filter(Boolean);
+      // Para ONUs: si hay unidades con código serial vinculado a este técnico, usar ese conteo.
+      // Si la asignación se hizo por cantidad genérica (sin código), no habrá filas en `onus`
+      // vinculadas — en ese caso, calcular igual que un producto normal (asignado − consumido).
+      const onusDesteProducto = (data?.onus || []).filter(o => o.productoId === a.productoId);
+      if (onusDesteProducto.length > 0) {
+        disponible = onusDesteProducto.length;
+        gastado    = Math.max(0, Number(a.cantidad) - disponible);
+        codigosPon = onusDesteProducto.map(o => o.codigoPon).filter(Boolean);
+      } else {
+        // gastadoTotal viene del backend ya sumado sin límite (no truncado a 100 registros)
+        gastado    = a.gastadoTotal || 0;
+        disponible = Math.max(0, Number(a.cantidad) - gastado);
+      }
     } else {
-      gastado    = (data?.consumos || [])
-        .filter(c => c.nombre === a.nombre)
-        .reduce((s, c) => s + Number(c.cantidad), 0);
+      gastado    = a.gastadoTotal || 0;
       disponible = Math.max(0, Number(a.cantidad) - gastado);
     }
 

@@ -84,9 +84,8 @@ if (typeof document !== 'undefined' && !document.getElementById('od-responsive-c
 
 /** Convierte cantidad en unidades a la representación para mostrar */
 function formatCantidadConsumo(c) {
-  if (c.producto.esMedible && c.producto.metrosPorUnidad) {
-    const metros = Number(c.cantidad) * c.producto.metrosPorUnidad;
-    return { valor: metros, unidad: 'm' };
+  if (c.producto.esMedible) {
+    return { valor: Number(c.cantidad), unidad: 'm' }; // ya viene en metros, no reconvertir
   }
   return { valor: Number(c.cantidad), unidad: c.producto.unidad || 'und' };
 }
