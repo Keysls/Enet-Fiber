@@ -989,6 +989,19 @@ const inventarioTecnico = async (req, res, next) => {
       }),
     ]);
 
+    // Consumo TOTAL por producto (sin límite) — `consumos` de arriba está truncado a
+    // los 100 más recientes solo para el listado de historial; sumar desde ahí
+    // subestima el gasto real de técnicos con más de 100 consumos históricos.
+    const consumoTotalesPorProducto = await prisma.consumoTecnico.groupBy({
+      by: ['productoId'],
+      where: { tecnicoId },
+      _sum: { cantidad: true },
+    });
+    const gastadoRealPorProducto = {};
+    for (const g of consumoTotalesPorProducto) {
+      gastadoRealPorProducto[g.productoId] = Number(g._sum.cantidad || 0);
+    }
+
     const totalItems = asignaciones.reduce((s, a) => s + Number(a.cantidad), 0);
 
     // Enriquecer consumos con datos de la orden (contrato/abonado)
@@ -1086,14 +1099,16 @@ const inventarioTecnico = async (req, res, next) => {
           // con los consumos (ya en metros) y dando resultados absurdos
           // como "0 de 1 metros, gastado: 100".
           cantidad:   esMedible ? cantBase * a.producto.metrosPorUnidad : cantBase,
+          gastadoTotal: gastadoRealPorProducto[a.productoId] || 0, // ya viene en metros si es medible
           fecha:      a.fecha,
         };
       }),
       onus: onus.map(o => ({
-        id:        o.id,
-        codigoPon: o.codigoPon,
-        producto:  o.producto.nombre,
-        codigo:    o.producto.codigo,
+        id:         o.id,
+        codigoPon:  o.codigoPon,
+        productoId: o.productoId,
+        producto:   o.producto.nombre,
+        codigo:     o.producto.codigo,
       })),
       ultimasEntregas: entregas.map(e => ({
         producto: e.producto.nombre,
@@ -1123,7 +1138,7 @@ const miInventario = async (req, res, next) => {
 
     const { id: tecnicoId, sedeId } = tecnico;
 
-    const [asignaciones, consumos, onus, entregas, recojos] = await Promise.all([
+    const [asignaciones, consumos, onus, entregas, recojos, consumoTotalesPorProducto] = await Promise.all([
       // Items asignados con sus cantidades
       prisma.asignacionTecnico.findMany({
         where: { tecnicoId, ...(sedeId && { sedeId }) },
@@ -1181,7 +1196,7 @@ const miInventario = async (req, res, next) => {
       }),
       // Recojos: equipos recuperados de clientes por el técnico
       prisma.recojo.findMany({
-          where: { 
+          where: {
               tecnicoId,
               estado: 'en_mano',   // ← solo los que tiene en mano
           },
@@ -1190,13 +1205,21 @@ const miInventario = async (req, res, next) => {
           },
           orderBy: { createdAt: 'desc' },
       }),
+      // Consumo TOTAL por producto (sin límite) — usado para calcular disponible real.
+      // `consumos` de arriba está limitado a los 100 más recientes solo para historial/UI;
+      // usar esa lista truncada para sumar el gastado subestimaba el consumo de técnicos
+      // con más de 100 registros históricos, inflando el "disponible" mostrado.
+      prisma.consumoTecnico.groupBy({
+        by: ['productoId'],
+        where: { tecnicoId, ...(sedeId && { sedeId }) },
+        _sum: { cantidad: true },
+      }),
     ]);
 
-    // Calcular consumo total por producto
+    // Calcular consumo total por producto (usa la suma completa, no la lista truncada)
     const consumoPorProducto = {};
-    for (const c of consumos) {
-      const pid = c.productoId;
-      consumoPorProducto[pid] = (consumoPorProducto[pid] || 0) + Number(c.cantidad);
+    for (const g of consumoTotalesPorProducto) {
+      consumoPorProducto[g.productoId] = Number(g._sum.cantidad || 0);
     }
 
     // Construir lista de items con métricas
