@@ -78,7 +78,7 @@ const calcularNextId = async (olt, password, tarjeta, puerto) => {
 // ─────────────────────────────────────────────────────────────
 // Función principal — llamada desde instalaciones.controller.js
 // ─────────────────────────────────────────────────────────────
-const autorizarOnuAutomatico = async ({ instalacionId, serialNumber, vlan, abonado, contrato, sedeId }) => {
+const autorizarOnuAutomatico = async ({ instalacionId, serialNumber, vlan, abonado, contrato, sedeId, usuarioId = null, origen = 'AUTO' }) => {
   console.log(`[AUTORIZAR] Iniciando autorización automática para SN: ${serialNumber}`);
 
   // 1. Obtener OLTs activas de la sede
@@ -158,7 +158,8 @@ const autorizarOnuAutomatico = async ({ instalacionId, serialNumber, vlan, abona
 
     await prisma.logActividad.create({
       data: {
-        accion:    'AUTORIZAR_ONU_AUTO',
+        usuarioId, // técnico que completó la instalación (AUTO) o admin/NOC que autorizó a mano (MANUAL)
+        accion:    origen === 'MANUAL' ? 'AUTORIZAR_ONU_MANUAL' : 'AUTORIZAR_ONU_AUTO',
         tabla:     'config_onu',
         detalles:  { serialNumber, oltNombre: olt.nombre, puertoCompleto: pendiente.puertoCompleto, onuId, vlan: vlan || olt.vlanDefecto },
       },

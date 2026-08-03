@@ -165,8 +165,8 @@ function DrawerTrabajo({ trabajoId, onCerrar }) {
                 {(!trabajo.consumos || trabajo.consumos.length === 0) ? (
                   <div style={{ fontSize: 12, color: '#94a3b8', padding: '8px 0' }}>Sin materiales registrados</div>
                 ) : trabajo.consumos.map((c, i) => {
-                  const esMedible = c.producto?.esMedible && c.producto?.metrosPorUnidad;
-                  const valor = esMedible ? Number(c.cantidad) * c.producto.metrosPorUnidad : Number(c.cantidad);
+                  const esMedible = c.producto?.esMedible;
+                  const valor = Number(c.cantidad); // ya viene en metros del backend, no reconvertir
                   const unidad = esMedible ? 'm' : (c.producto?.unidad || 'und');
                   return (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: i === trabajo.consumos.length - 1 ? 'none' : '1px solid #f8fafc', gap: 10 }}>

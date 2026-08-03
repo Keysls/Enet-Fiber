@@ -480,6 +480,10 @@ const completar = async (req, res, next) => {
             abonado,
             contrato,
             sedeId,
+            // Aunque el disparo es automático (segundo plano), fue la acción del
+            // técnico (completar la instalación) la que lo originó — se le atribuye
+            // a él en el log en vez de mostrar "Sistema".
+            usuarioId: req.usuario.id,
           });
           if (r.ok) {
             console.log(`[COMPLETAR] ✅ ONU ${serialNumber} autorizada en ${r.oltNombre} — ${r.puertoCompleto}:${r.onuId}`);
@@ -662,6 +666,8 @@ const autorizarManual = async (req, res, next) => {
     const resultado = await autorizarConReintentos({
       instalacionId: req.params.instalacionId,
       serialNumber, vlan, abonado, contrato, sedeId,
+      usuarioId: req.usuario.id,
+      origen: 'MANUAL',
     });
 
     if (resultado.ok) {

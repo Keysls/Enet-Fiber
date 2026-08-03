@@ -161,6 +161,18 @@ const asignarItems = async (tx, { sedeId, tecnicoId, registradoPor, items = [] }
     const cantidad = toInt(item.cantidad);
     if (!productoId || cantidad <= 0) throw new Error('Producto o cantidad invalidos');
 
+    // Guarda contra doble clic/doble envío accidental desde el panel admin
+    // (esta acción es manual, no una cola de reintentos automáticos, así que
+    // un envío duplicado real y voluntario segundos después sigue permitido —
+    // solo se bloquea un duplicado casi instantáneo del mismo click).
+    const entregaReciente = await tx.entregaTecnico.findFirst({
+      where: {
+        tecnicoId, productoId, sedeId, cantidad,
+        fecha: { gte: new Date(Date.now() - 5000) },
+      },
+    });
+    if (entregaReciente) continue;
+
     await tx.entregaTecnico.create({
       data: { productoId, tecnicoId, sedeId, cantidad, registradoPor: String(registradoPor), codigoPon: item.codigoPon || null },
     });
@@ -1414,9 +1426,9 @@ const registrarConsumo = async (req, res, next) => {
 
     // La app móvil ya convierte metros→unidades antes de enviar
     // El backend guarda directamente sin reconvertir
-    const itemsNormalizados = items.filter(i => i.productoId && Number(i.cantidad) > 0)
-      .map(i => ({ 
-        productoId: Number(i.productoId), 
+    const itemsCrudos = items.filter(i => i.productoId && Number(i.cantidad) > 0)
+      .map(i => ({
+        productoId: Number(i.productoId),
         cantidad:   Number(i.cantidad),
         codigoPon:  i.codigoPon || null,
         // Cuántas de las unidades consumidas el técnico eligió que sean
@@ -1424,6 +1436,32 @@ const registrarConsumo = async (req, res, next) => {
         // Si no viene, se asume 0 (compatibilidad con clientes viejos).
         unidadesRecicladas: Number(i.unidadesRecicladas) || 0,
       }));
+
+    // ── Idempotencia: descartar items que ya fueron registrados antes ──
+    // La app móvil reintenta este endpoint (offline sync + reintentos en
+    // paralelo), y sin esta verificación cada reintento duplicaba el
+    // ConsumoTecnico y descontaba el stock dos veces. Para ONUs (codigoPon)
+    // el identificador natural es el propio código; para material genérico
+    // se usa (técnico + producto + cantidad + descripción/orden) como clave.
+    const descripcionFinal = descripcion || (ordenId ? `Orden: ${ordenId}` : null);
+    const itemsNormalizados = [];
+    for (const item of itemsCrudos) {
+      const yaExiste = await prisma.consumoTecnico.findFirst({
+        where: item.codigoPon
+          ? { tecnicoId: tecnico.id, codigoPon: item.codigoPon }
+          : {
+              tecnicoId:   tecnico.id,
+              productoId:  item.productoId,
+              cantidad:    item.cantidad,
+              descripcion: descripcionFinal,
+            },
+      });
+      if (yaExiste) continue; // ya se registró en un intento anterior — ignorar duplicado
+      itemsNormalizados.push(item);
+    }
+    if (itemsNormalizados.length === 0) {
+      return res.json({ ok: true, mensaje: 'Consumo ya registrado previamente (idempotente)' });
+    }
 
     // ── Validar y resolver recojos ANTES de crear los ConsumoTecnico ──
     // CRÍTICO: este cálculo debe ocurrir antes de crear los registros de
@@ -1486,7 +1524,7 @@ const registrarConsumo = async (req, res, next) => {
           productoId:  i.productoId,
           cantidad:    i.cantidad,
           motivo:      motivo || 'SERVICIO',
-          descripcion: descripcion || (ordenId ? `Orden: ${ordenId}` : null),
+          descripcion: descripcionFinal,
           codigoPon:   i.codigoPon || null,
         },
       }))
@@ -1598,6 +1636,21 @@ const registrarRetiro = async (req, res, next) => {
 
       for (const item of items) {
         const productoId = item.productoId ? Number(item.productoId) : null;
+
+        // ── Idempotencia: si ya existe un recojo "en_mano" con este mismo
+        // codigoPon para este técnico, no crear otro. Esto evita duplicados
+        // cuando el cliente reintenta el mismo envío (p. ej. sincronización
+        // offline en carrera con un envío online directo) — sin esto, cada
+        // reintento sumaba de nuevo al inventario y creaba otra fila de Recojo.
+        if (item.codigoPon) {
+          const existente = await tx.recojo.findFirst({
+            where: { tecnicoId: tecnico.id, codigoPon: item.codigoPon, estado: 'en_mano' },
+          });
+          if (existente) {
+            resultados.push(existente);
+            continue;
+          }
+        }
 
         // 1. Crear el Recojo (historial / trazabilidad para el admin)
         const recojo = await tx.recojo.create({
