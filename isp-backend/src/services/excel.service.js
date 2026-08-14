@@ -218,6 +218,7 @@ const parsearExcelContratos = (rutaArchivo) => {
     const s = limpiar(v).toUpperCase();
     if (s === 'INTERNET') return 'INTERNET';
     if (s === 'CABLE')    return 'CABLE';
+    if (s === 'DUO')      return 'DUO';
     return null;
   };
 

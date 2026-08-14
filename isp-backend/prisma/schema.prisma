@@ -909,6 +909,21 @@ model ConfigTipoOrden {
   @@map("config_tipos_orden")
 }
 
+// ── Actualización de la app móvil (in-app update) ──────────────
+model AppVersion {
+  id             String   @id @default(uuid())
+  plataforma     String   @default("android") @map("plataforma") // por si algún día hay otra
+  versionCode    Int      @map("version_code")       // BuildConfig.VERSION_CODE del APK publicado
+  versionName    String   @map("version_name")       // "1.4.2" — solo informativo
+  apkUrl         String   @map("apk_url")             // URL pública de Firebase Storage
+  notas          String?  @map("notas")               // changelog corto para mostrar al técnico
+  esObligatoria  Boolean  @default(false) @map("es_obligatoria")
+  publicadoEn    DateTime @default(now()) @map("publicado_en")
+  publicadoPor   String?  @map("publicado_por")
+
+  @@map("app_version")
+}
+
 // ── Recuperación de contraseña ────────────────────────────────
 model PasswordResetToken {
   id        String   @id @default(uuid())

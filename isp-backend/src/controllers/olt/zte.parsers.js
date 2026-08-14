@@ -4,37 +4,68 @@
 const ZteParsers = {
 
   // ── Parsear ONUs no autorizadas (uncfg) ──────────────────────
-  // Comando: "show pon onu uncfg" — mismo comando y mismas columnas
-  // para los 5 modelos (C300, C320, C600, C610, C620).
-  // Solo cambia el prefijo de interfaz:
-  //   C300/C320: gpon-olt_1/4/2
-  //   C600+:     gpon_olt-1/2/6
-  // Columnas siempre: OltIndex | Model | SN | PW
-  parsePendientes(output) {
+  // Replica ParseC300/ParseC600/Parse de ZteParsers.cs: comando y
+  // formato de columnas distintos por modelo (no por firmware) —
+  //   C300/C320 → "show gpon onu uncfg" → líneas "gpon-onu_1/3/7:1"
+  //               columnas: Index | SN | State  (SN = partes[1])
+  //   C600+     → "show pon onu uncfg"  → líneas "gpon_olt-1/4/8"
+  //               columnas: Index | Model | SN | PW  (SN = partes[2])
+  parseC300(output) {
     const resultado = [];
     if (!output) return resultado;
 
     for (const linea of output.split('\n')) {
       const l = linea.trim();
-      if (!/^gpon[-_]olt[-_]/i.test(l)) continue;
+      if (!l.startsWith('gpon-onu_')) continue;
 
       const partes = l.split(/\s+/).filter(Boolean);
-      if (partes.length < 3) continue;
+      if (partes.length < 2) continue;
 
-      // partes[0] = "gpon-olt_1/4/2" o "gpon_olt-1/2/6" → "1/4/2"
-      const indice = partes[0].replace(/^gpon[-_]olt[-_]/i, '');
+      // partes[0] = "gpon-onu_1/3/7:1" → "1/3/7"
+      const indice = partes[0].replace('gpon-onu_', '').split(':')[0];
       const segmentos = indice.split('/');
       if (segmentos.length < 3) continue;
 
       const [frame, tarjeta, puerto] = segmentos;
       resultado.push({
-        numeroSerie: partes[2],   // SN
-        modelo: partes[1],        // Model (puede ser "N/A")
+        numeroSerie: partes[1],
         frame, tarjeta, puerto,
         puertoCompleto: `${frame}/${tarjeta}/${puerto}`,
       });
     }
     return resultado;
+  },
+
+  parseC600(output) {
+    const resultado = [];
+    if (!output) return resultado;
+
+    for (const linea of output.split('\n')) {
+      const l = linea.trim();
+      if (!l.startsWith('gpon_olt-')) continue;
+
+      const partes = l.split(/\s+/).filter(Boolean);
+      if (partes.length < 3) continue;
+
+      // partes[0] = "gpon_olt-1/4/8" → "1/4/8"
+      const indice = partes[0].replace('gpon_olt-', '');
+      const segmentos = indice.split('/');
+      if (segmentos.length < 3) continue;
+
+      const [frame, tarjeta, puerto] = segmentos;
+      resultado.push({
+        numeroSerie: partes[2],
+        modelo: partes[1],
+        frame, tarjeta, puerto,
+        puertoCompleto: `${frame}/${tarjeta}/${puerto}`,
+      });
+    }
+    return resultado;
+  },
+
+  parsePendientes(output, modeloOlt) {
+    const esC600Plus = ['C600', 'C610', 'C620'].includes((modeloOlt || '').toUpperCase());
+    return esC600Plus ? this.parseC600(output) : this.parseC300(output);
   },
 
   // ── Parsear IDs usados en un puerto ──────────────────────────

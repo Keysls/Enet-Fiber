@@ -600,6 +600,17 @@ const autorizarManual = async (req, res, next) => {
         data:  {
           estadoOlt: 'AUTORIZADA',
           errorOlt:  null,
+          // BUG FIX: si esta instalación ya había sido autorizada antes en una
+          // OLT real (ej. el técnico autenticó una ONU distinta y luego usó
+          // "Cambiar equipo" para pasar a una ONU Dixon que auto-aprovisiona),
+          // estos campos quedaban con los datos de la OLT VIEJA — la app móvil
+          // los sigue mostrando (oltNombre, puerto, ID) aunque esta autorización
+          // fue "sin OLT". Sin este reseteo, el técnico ve una OLT/puerto que
+          // no corresponde a la ONU realmente instalada.
+          oltId:            null,
+          puertoOlt:        null,
+          onuIdOlt:         null,
+          fechaAutorizacion: new Date(),
         },
       });
 
