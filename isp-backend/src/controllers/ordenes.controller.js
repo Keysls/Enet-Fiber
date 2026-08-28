@@ -8,6 +8,7 @@ const { notificarOrdenPendienteWan } = require('../services/notificaciones.servi
 const {
   TIPOS_INTERNET, TIPOS_CABLE, TIPOS_DUO,
   TIPOS_NOC_TECNICO, TIPOS_SOLO_NOC,
+  TIPO_LABEL,
 } = require('../utils/tipoOrden');
 
 // Tipos que el NOC PUEDE completar opcionalmente (sin técnico)
@@ -1038,10 +1039,18 @@ const historialWan = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────
 const reportes = async (req, res, next) => {
   try {
+    const { fechaDesde, fechaHasta } = req.query;
+
     // ADMIN solo ve su sede; SUPERADMIN/OPERADOR_NOC ven todo
-    const whereSede = ['ADMIN','SECRETARIA'].includes(req.usuario.rol)
-      ? { sedeId: req.usuario.sedeId }
-      : {};
+    const whereSede = {
+      ...(['ADMIN','SECRETARIA'].includes(req.usuario.rol) && { sedeId: req.usuario.sedeId }),
+      ...((fechaDesde || fechaHasta) && {
+        createdAt: {
+          ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
+          ...(fechaHasta && { lte: new Date(fechaHasta + 'T23:59:59') }),
+        },
+      }),
+    };
 
     const [total, porEstadoRaw, porTipoRaw, topTecnicosRaw, tecnicosActivos] = await Promise.all([
       prisma.ordenServicio.count({ where: whereSede }),
@@ -1238,6 +1247,90 @@ const restaurar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── GET /api/ordenes/exportar — Excel con los filtros aplicados ─
+// Mismos filtros que listar(), pero sin paginar: trae todo lo que
+// matchea y arma el .xlsx. TECNICO no tiene acceso (ver rutas).
+const exportarCsv = async (req, res, next) => {
+  try {
+    const { estado, tecnicoId, tipos, search, sedeId, fechaDesde, fechaHasta } = req.query;
+    const { rol, sedeId: miSede } = req.usuario;
+
+    let where = { deletedAt: null };
+
+    if (esRolNoc(rol)) {
+      const tiposNoc = tipos ? tipos.split(',') : [...TIPOS_INTERNET, ...TIPOS_DUO];
+      where = {
+        tipoOrden: { in: tiposNoc },
+        ...(estado    && { estado }),
+        ...(sedeId    && { sedeId }),
+        ...(tecnicoId && { tecnicoId }),
+        ...(search    && {
+          OR: [
+            { abonado:   { contains: search, mode: 'insensitive' } },
+            { nServicio: { contains: search } },
+          ],
+        }),
+      };
+    } else {
+      // ADMIN / SECRETARIA: solo su sede
+      where = {
+        sedeId: miSede,
+        ...(estado    && { estado }),
+        ...(tecnicoId && { tecnicoId }),
+        ...(tipos     && { tipoOrden: { in: tipos.split(',') } }),
+        ...(search    && {
+          OR: [
+            { abonado:   { contains: search, mode: 'insensitive' } },
+            { nServicio: { contains: search } },
+          ],
+        }),
+        ...((fechaDesde || fechaHasta) && {
+          fechaFin: {
+            ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
+            ...(fechaHasta && { lte: new Date(fechaHasta + 'T23:59:59') }),
+          },
+        }),
+      };
+    }
+
+    const ordenes = await prisma.ordenServicio.findMany({
+      where,
+      include: {
+        tecnico: { include: { usuario: { select: { nombre: true, apellido: true } } } },
+        sede:    { select: { nombre: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20000, // límite de seguridad — evita exportar sin fin
+    });
+
+    const filas = ordenes.map(o => ({
+      'N° Servicio': o.nServicio,
+      'Tipo':        TIPO_LABEL[o.tipoOrden] || o.tipoOrden,
+      'Estado':      o.estado,
+      'Abonado':     o.abonado,
+      'DNI':         o.dni || '',
+      'Contrato':    o.contrato || '',
+      'Dirección':   o.direccion,
+      'Sector':      o.sector || '',
+      'Celular':     o.celular || '',
+      'Técnico':     o.tecnico?.usuario ? `${o.tecnico.usuario.nombre} ${o.tecnico.usuario.apellido}`.trim() : '',
+      'Sede':        o.sede?.nombre || '',
+      'Creado':      o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE') : '',
+      'Fecha fin':   o.fechaFin  ? new Date(o.fechaFin).toLocaleString('es-PE')  : '',
+    }));
+
+    const XLSX = require('xlsx');
+    const hoja  = XLSX.utils.json_to_sheet(filas);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Ordenes');
+    const buffer = XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="ordenes_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) { next(err); }
+};
+
 // ── GET /api/ordenes/papelera — listar eliminadas ─────────────
 const papelera = async (req, res, next) => {
   try {
@@ -1259,5 +1352,6 @@ module.exports = {
   asignar, ponerWan, nocCompletar, aceptar, cambiarEstado,
   stats, actualizarDatos, historialWan, reportes, notificaciones,
   eliminar, restaurar, papelera, upsertContratoDesdeOrden,wanHeredableDelContrato,
+  exportarCsv,
   TIPOS_NOC,
 };

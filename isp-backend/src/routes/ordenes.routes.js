@@ -11,6 +11,7 @@ router.get('/stats',         requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', '
 router.get('/reportes',      requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'),                 ctrl.reportes);
 router.get('/historial-wan', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.historialWan);
 router.get('/notificaciones', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.notificaciones);
+router.get('/exportar',       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.exportarCsv);
 
 // Importar Excel
 router.post('/subir-excel',     requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.subirExcel);
