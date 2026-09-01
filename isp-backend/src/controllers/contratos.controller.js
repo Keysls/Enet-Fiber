@@ -65,9 +65,10 @@ const listar = async (req, res, next) => {
       }
     }
 
-    // Filtro NOC: solo contratos con al menos una orden de Internet
+    // Filtro NOC: solo contratos con al menos una orden de Internet o Dúo
+    // (Dúo también lleva componente de Internet/WAN — no debe excluirse)
     if (esSoloInternet) {
-      where.ordenes = { some: { tipoOrden: { in: TIPOS_INTERNET } } };
+      where.ordenes = { some: { tipoOrden: { in: [...TIPOS_INTERNET, ...TIPOS_DUO] } } };
     }
 
     // Traer TODOS los que matchean
@@ -77,7 +78,7 @@ const listar = async (req, res, next) => {
         sede:    { select: { id: true, nombre: true } },
          plan:    { select: { nombre: true, mbps: true } },
         ordenes: {
-          where:   esSoloInternet ? { tipoOrden: { in: TIPOS_INTERNET } } : undefined,
+          where:   esSoloInternet ? { tipoOrden: { in: [...TIPOS_INTERNET, ...TIPOS_DUO] } } : undefined,
           orderBy: { fechaServicio: 'desc' },
           select:  { tipoOrden: true, estado: true, fechaServicio: true },
         },
@@ -151,7 +152,8 @@ const obtener = async (req, res, next) => {
         sede: { select: { id: true, nombre: true, ciudad: true } },
         plan:    { select: { nombre: true, mbps: true } }, 
         ordenes: {
-          where: esSoloInternet ? { tipoOrden: { in: TIPOS_INTERNET } } : undefined,
+          // Dúo también lleva componente de Internet/WAN — no debe excluirse
+          where: esSoloInternet ? { tipoOrden: { in: [...TIPOS_INTERNET, ...TIPOS_DUO] } } : undefined,
           orderBy: { fechaServicio: 'desc' },
           include: {
             tecnico: {
