@@ -235,7 +235,7 @@ export const siscadreApi = {
 };
 
 export const tiposOrdenApi = {
-  listar:     () => api.get('/tipos-orden'),
+  listar:     (todos) => api.get('/tipos-orden', { params: todos ? { todos: true } : {} }),
   obtener:    (codigo) => api.get(`/tipos-orden/${codigo}`),
   crear:      (data)   => api.post('/tipos-orden', data),
   actualizar: (codigo, data) => api.put(`/tipos-orden/${codigo}`, data),
