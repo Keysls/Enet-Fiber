@@ -4,7 +4,7 @@ import { BarChart2, CheckCircle, Clock, XCircle, TrendingUp, Users, Download } f
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { ordenesApi } from '../services/api';
-import { Card, Spinner, Btn } from '../components/ui';
+import { Card, Spinner, Btn, Input } from '../components/ui';
 import { fmtFecha, fmtFechaHora, fmtMinutos, ESTADO_CONFIG } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
 
@@ -59,12 +59,17 @@ function BarChart({ data, total }) {
 
 export default function ReportesPage() {
   const [exportando, setExportando] = useState(false);
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const { tipoLabel } = useTiposOrden();
 
   // Una sola query que trae los AGREGADOS calculados en backend
   const { data: stats } = useQuery({
-    queryKey: ['reportes-stats'],
-    queryFn:  () => ordenesApi.reportes().then(r => r.data),
+    queryKey: ['reportes-stats', fechaDesde, fechaHasta],
+    queryFn:  () => ordenesApi.reportes({
+      ...(fechaDesde && { fechaDesde }),
+      ...(fechaHasta && { fechaHasta }),
+    }).then(r => r.data),
   });
 
   const total = stats?.total || 0;
@@ -102,7 +107,11 @@ export default function ReportesPage() {
       let all = [];
       let page = 1;
       while (true) {
-        const r = await ordenesApi.listar({ page, limit });
+        const r = await ordenesApi.listar({
+          page, limit,
+          ...(fechaDesde && { fechaDesde }),
+          ...(fechaHasta && { fechaHasta }),
+        });
         const bloque = r.data?.data || [];
         all = all.concat(bloque);
         toast.loading(`Cargando datos... ${all.length} / ${total}`, { id: toastId });
@@ -161,8 +170,31 @@ export default function ReportesPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Servicios');
 
+      // Hoja: Distribución por Estado (respeta el rango de fechas filtrado)
+      const wsEstado = XLSX.utils.json_to_sheet(
+        byEstado.map(e => ({
+          'Estado':     e.label,
+          'Cantidad':   e.value,
+          '% del total': total > 0 ? `${Math.round(e.value / total * 100)}%` : '0%',
+        }))
+      );
+      wsEstado['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsEstado, 'Distribución por Estado');
+
+      // Hoja: Distribución por Tipo (respeta el rango de fechas filtrado)
+      const wsTipo = XLSX.utils.json_to_sheet(
+        byTipo.map(t => ({
+          'Tipo de orden': t.label,
+          'Cantidad':      t.value,
+          '% del total':   total > 0 ? `${Math.round(t.value / total * 100)}%` : '0%',
+        }))
+      );
+      wsTipo['!cols'] = [{ wch: 32 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsTipo, 'Distribución por Tipo');
+
       const fecha = new Date().toISOString().split('T')[0];
-      XLSX.writeFile(wb, `EnetFiber_Servicios_${fecha}.xlsx`);
+      const sufijoFecha = (fechaDesde || fechaHasta) ? `_${fechaDesde || 'inicio'}_a_${fechaHasta || fecha}` : '';
+      XLSX.writeFile(wb, `EnetFiber_Servicios${sufijoFecha}_${fecha}.xlsx`);
       toast.success(`✓ ${all.length} registros exportados`, { id: toastId });
     } catch (err) {
       toast.error('Error al generar el reporte', { id: toastId });
@@ -175,14 +207,23 @@ export default function ReportesPage() {
     <div style={{ padding: 28 }} className="animate-fade">
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>Reportes</h1>
           <p style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 3 }}>Resumen general del sistema · {total} órdenes</p>
         </div>
-        <Btn variant="primary" icon={<Download size={13}/>} onClick={exportarExcel} disabled={!total || exportando} loading={exportando} style={{ width: '100%', maxWidth: 200, justifyContent: 'center' }}>
-          {exportando ? 'Generando...' : 'Exportar Excel'}
-        </Btn>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+          <Input label="Desde" type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} style={{ width: 150 }} />
+          <Input label="Hasta" type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} style={{ width: 150 }} />
+          {(fechaDesde || fechaHasta) && (
+            <Btn variant="ghost" size="sm" onClick={() => { setFechaDesde(''); setFechaHasta(''); }}>
+              Limpiar
+            </Btn>
+          )}
+          <Btn variant="primary" icon={<Download size={13}/>} onClick={exportarExcel} disabled={!total || exportando} loading={exportando}>
+            {exportando ? 'Generando...' : 'Exportar Excel'}
+          </Btn>
+        </div>
       </div>
 
       {/* Stats */}

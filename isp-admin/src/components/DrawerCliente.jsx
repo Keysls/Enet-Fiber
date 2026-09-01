@@ -169,7 +169,24 @@ export default function DrawerCliente({ numero, sedeId, onCerrar }) {
                   <div style={{ padding: '0 16px' }}>
                     <FilaDato label="Nombre"   value={c.abonado}/>
                     <FilaDato label="DNI"      value={c.dni || '—'} mono/>
-                    <FilaDato label="Teléfono" value={c.celular || '—'} mono/>
+                    <FilaDato
+                      label="Teléfono" value={c.celular || '—'} mono
+                      action={c.celular && (
+                        <IconBtn title="Abrir WhatsApp" color="#25D366" onClick={() => abrirWhatsapp(c.celular)}>
+                          <IconWhatsapp size={14}/>
+                        </IconBtn>
+                      )}
+                    />
+                    {c.direccion && (
+                      <FilaDato
+                        label="Dirección" value={c.direccion}
+                        action={
+                          <IconBtn title="Compartir ubicación por WhatsApp" color="#3b9fd4" onClick={() => compartirUbicacionWhatsapp(c)}>
+                            <MapPin size={14}/>
+                          </IconBtn>
+                        }
+                      />
+                    )}
                     {c.referencia && <FilaDato label="Referencia" value={c.referencia}/>}
                     {c.sector && <FilaDato label="Sector" value={c.sector}/>}
                     {c.precinto && <FilaDato label="Precinto" value={c.precinto} mono/>}
@@ -325,23 +342,58 @@ export default function DrawerCliente({ numero, sedeId, onCerrar }) {
 
 // ── Mini-componentes ──────────────────────────────────────────
 
-function IconBtn({ onClick, title, children }) {
+// Perú: si el número no trae código de país, se le antepone 51.
+function abrirWhatsapp(celular, texto) {
+  const digitos = String(celular).replace(/\D/g, '');
+  const numero  = digitos.startsWith('51') ? digitos : `51${digitos}`;
+  const query   = texto ? `?text=${encodeURIComponent(texto)}` : '';
+  window.open(`https://wa.me/${numero}${query}`, '_blank', 'noopener,noreferrer');
+}
+
+// Arma el mensaje de ubicación (Contrato/Nombre/Dirección + GPS si existe)
+// y abre WhatsApp SIN número de destino — el usuario elige a quién
+// reenviarlo (técnico, supervisor, etc.), no va directo al cliente.
+function compartirUbicacionWhatsapp(c) {
+  const lineas = [
+    `Contrato: ${c.numero}`,
+    `Nombre: ${c.abonado}`,
+    `Dirección: ${c.direccion}`,
+  ];
+  if (c.latitud != null && c.longitud != null) {
+    lineas.push(`Ubicación GPS: https://www.google.com/maps?q=${c.latitud},${c.longitud}`);
+  }
+  const texto = encodeURIComponent(lineas.join('\n'));
+  window.open(`https://wa.me/?text=${texto}`, '_blank', 'noopener,noreferrer');
+}
+
+function IconWhatsapp({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+      <path d="M12.04 2c-5.523 0-10 4.477-10 10 0 1.76.454 3.482 1.317 5.01L2 22l5.14-1.343A9.958 9.958 0 0 0 12.04 22c5.523 0 10-4.477 10-10s-4.477-10-10-10zm0 18.135c-1.607 0-3.183-.432-4.564-1.25l-.327-.194-3.05.797.815-2.973-.213-.305a8.115 8.115 0 0 1-1.278-4.393c0-4.503 3.664-8.166 8.167-8.166 2.18 0 4.229.85 5.77 2.393a8.108 8.108 0 0 1 2.396 5.774c0 4.503-3.663 8.317-8.166 8.317z"/>
+    </svg>
+  );
+}
+
+function IconBtn({ onClick, title, children, color }) {
+  const colorBase  = color || '#64748b';
+  const colorHover = color || '#0f172a';
   return (
     <button onClick={onClick} title={title} style={{
       width: 32, height: 32, borderRadius: 8, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'transparent', border: '1px solid #e2e8f0',
-      cursor: 'pointer', color: '#64748b',
+      cursor: 'pointer', color: colorBase,
       transition: 'all .15s',
     }}
-    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#0f172a'; }}
-    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}>
+    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = colorHover; }}
+    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = colorBase; }}>
       {children}
     </button>
   );
 }
 
-function FilaDato({ label, value, mono, onCopy, last }) {
+function FilaDato({ label, value, mono, onCopy, last, action }) {
   return (
     <div onClick={onCopy || undefined} style={{
       display: 'flex', alignItems: 'center',
@@ -364,6 +416,7 @@ function FilaDato({ label, value, mono, onCopy, last }) {
         {value}
       </span>
       {onCopy && <Copy size={11} style={{ color: '#cbd5e1', flexShrink: 0 }}/>}
+      {action && <span onClick={e => e.stopPropagation()} style={{ display: 'flex' }}>{action}</span>}
     </div>
   );
 }

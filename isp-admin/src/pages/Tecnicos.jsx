@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Pencil, Lock, PowerOff, Power, Phone, Mail, MapPin, Car, CreditCard, Package, Wifi, FileDown, ChevronUp } from 'lucide-react';
+import { UserPlus, Pencil, Lock, PowerOff, Power, Phone, Mail, MapPin, Car, CreditCard, Package, Wifi, FileDown, FileText, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { tecnicosApi, stockApi } from '../services/api';
 import { Card, Btn, Modal, Input, Avatar, Spinner, Empty } from '../components/ui';
 import { useAuthStore } from '../store/auth.store';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // ─── CSS responsivo ───────────────────────────────────────────
 const CSS = `
@@ -82,6 +84,7 @@ function SectionLabel({ children }) {
 // ── Panel Inventario (desglosable, ya no es overlay) ───────────────
 function PanelInventario({ tecnico, onClose }) {
   const [tab, setTab] = useState('stock');
+  const [showPdf, setShowPdf] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventario-tecnico', tecnico?.id],
@@ -184,6 +187,7 @@ function PanelInventario({ tecnico, onClose }) {
   }
 
   return (
+    <>
     <div
       className="animate-fade"
       style={{ padding: '18px 20px', background: 'var(--bg-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}
@@ -233,6 +237,15 @@ function PanelInventario({ tecnico, onClose }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--txt)'; }}
             >
               <FileDown size={13} /> Excel
+            </button>
+            <button
+              onClick={() => setShowPdf(true)}
+              disabled={isLoading || !data}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', opacity: isLoading || !data ? 0.4 : 1 }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#dc2626'; e.currentTarget.style.color = '#dc2626'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--txt)'; }}
+            >
+              <FileText size={13} /> Pdf
             </button>
           </div>
         )}
@@ -468,6 +481,226 @@ function PanelInventario({ tecnico, onClose }) {
         </div>
       )}
     </div>
+
+    <ModalPdfEntrega
+      open={showPdf}
+      onClose={() => setShowPdf(false)}
+      nombre={nombre}
+      sede={tecnico.usuario?.sede}
+      entregas={(data?.historial || []).filter(h => h.tipo === 'salida')}
+    />
+    </>
+  );
+}
+
+// Carga la imagen del logo como dataURL (mismo origen, sin problema de CORS)
+function cargarImagenBase64(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+// ── Modal: generar PDF de entrega de materiales ────────────────
+function ModalPdfEntrega({ open, onClose, nombre, sede, entregas }) {
+  const admin = useAuthStore(s => s.usuario);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [fechaHasta, setFechaHasta] = useState(hoy);
+
+  const filas = entregas.filter(a => {
+    if (!a.fecha) return false;
+    const f = new Date(a.fecha);
+    if (fechaDesde && f < new Date(fechaDesde + 'T00:00:00')) return false;
+    if (fechaHasta && f > new Date(fechaHasta + 'T23:59:59')) return false;
+    return true;
+  });
+
+  async function generarPdf() {
+    const doc   = new jsPDF();
+    const logo  = await cargarImagenBase64('/logo-e.png');
+    const MARGEN_IZQ = 14, MARGEN_DER = 196;
+
+    const nombreAdmin = admin ? `${admin.nombre || ''} ${admin.apellido || ''}`.trim() : '';
+    const nombreSede  = sede ? `${sede.nombre}${sede.ciudad ? ' - ' + sede.ciudad : ''}` : '';
+    const ahora       = new Date();
+    const fechaEmision = `${ahora.toLocaleDateString('es-PE')} ${ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`;
+
+    // ── Encabezado ──────────────────────────────────────────
+    if (logo) doc.addImage(logo, 'PNG', MARGEN_IZQ, 12, 16, 16);
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text('Enet Fiber Perú', logo ? 34 : MARGEN_IZQ, 19);
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(100);
+    doc.text('Gestión de Almacén y Entrega de Materiales', logo ? 34 : MARGEN_IZQ, 25);
+    doc.setTextColor(0);
+
+    doc.setDrawColor(180);
+    doc.line(MARGEN_IZQ, 32, MARGEN_DER, 32);
+
+    // ── Título ──────────────────────────────────────────────
+    doc.setFontSize(15);
+    doc.setFont(undefined, 'bold');
+    doc.text('ACTA DE ENTREGA DE MATERIALES', 105, 42, { align: 'center' });
+
+    // ── Datos generales (recuadro) ───────────────────────────
+    let y = 50;
+    doc.setDrawColor(210);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(MARGEN_IZQ, y, MARGEN_DER - MARGEN_IZQ, 32, 2, 2, 'FD');
+
+    const datosIzq = [
+      ['Oficina / Sede:', nombreSede || '________________'],
+      ['Administrador:', nombreAdmin || '________________'],
+    ];
+    const datosDer = [
+      ['Técnico:', nombre || '________________'],
+      ['Periodo:', `${fechaDesde} al ${fechaHasta}`],
+    ];
+    doc.setFontSize(9.5);
+    let yy = y + 8;
+    datosIzq.forEach(([label, valor]) => {
+      doc.setFont(undefined, 'bold');
+      doc.text(label, MARGEN_IZQ + 4, yy);
+      doc.setFont(undefined, 'normal');
+      doc.text(String(valor), MARGEN_IZQ + 34, yy);
+      yy += 7;
+    });
+    yy = y + 8;
+    datosDer.forEach(([label, valor]) => {
+      doc.setFont(undefined, 'bold');
+      doc.text(label, 110, yy);
+      doc.setFont(undefined, 'normal');
+      doc.text(String(valor), 132, yy);
+      yy += 7;
+    });
+    doc.setFont(undefined, 'bold');
+    doc.text('Fecha y hora de emisión:', MARGEN_IZQ + 4, y + 24);
+    doc.setFont(undefined, 'normal');
+    doc.text(fechaEmision, MARGEN_IZQ + 46, y + 24);
+
+    y += 40;
+
+    // ── Párrafo formal ────────────────────────────────────────
+    doc.setFontSize(9.5);
+    doc.setFont(undefined, 'normal');
+    const parrafo = `Por medio de la presente acta, se deja constancia de la entrega de materiales realizada por ${nombreSede || 'la sede correspondiente'} al técnico ${nombre || 'responsable'}, quien recibe los ítems detallados a continuación para el desarrollo de sus labores operativas dentro del periodo indicado.`;
+    const lineasParrafo = doc.splitTextToSize(parrafo, MARGEN_DER - MARGEN_IZQ);
+    doc.text(lineasParrafo, MARGEN_IZQ, y);
+    y += lineasParrafo.length * 5 + 6;
+
+    // ── Tabla de materiales ───────────────────────────────────
+    autoTable(doc, {
+      startY: y,
+      head: [['N.º', 'Material', 'Cantidad', 'Observaciones']],
+      body: filas.length > 0
+        ? filas.map((a, i) => [
+            String(i + 1),
+            a.item || '—',
+            String(a.cantidad ?? '—'),
+            '—',
+          ])
+        : [['—', '—', '—', '—']],
+      styles: { fontSize: 9, cellPadding: 3, lineColor: [210, 210, 210], lineWidth: 0.1 },
+      headStyles: { fillColor: [59, 159, 212], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      columnStyles: {
+        0: { cellWidth: 14, halign: 'center' },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 26, halign: 'center' },
+        3: { cellWidth: 'auto' },
+      },
+      margin: { left: MARGEN_IZQ, right: 14 },
+    });
+
+    y = (doc.lastAutoTable?.finalY || y + 20) + 10;
+
+    // ── Constancia de entrega y recepción ────────────────────
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text('CONSTANCIA DE ENTREGA Y RECEPCIÓN', MARGEN_IZQ, y);
+    y += 6;
+    doc.setFontSize(9.5);
+    doc.setFont(undefined, 'normal');
+    const constancia = 'Con la firma del presente documento, ambas partes declaran que los materiales descritos en la tabla anterior fueron entregados y recibidos conformes, en buen estado y en las cantidades señaladas, asumiendo el técnico la responsabilidad sobre su custodia y uso adecuado.';
+    const lineasConstancia = doc.splitTextToSize(constancia, MARGEN_DER - MARGEN_IZQ);
+    doc.text(lineasConstancia, MARGEN_IZQ, y);
+    y += lineasConstancia.length * 5 + 14;
+
+    // ── Firmas ────────────────────────────────────────────────
+    const firmaY = Math.min(Math.max(y, 220), 265);
+    const colIzqX = MARGEN_IZQ, colDerX = 112, anchoCol = 78;
+
+    const bloqueFirma = (x, titulo, nombrePersona) => {
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text(titulo, x, firmaY);
+      doc.setFont(undefined, 'normal');
+
+      doc.text('Nombre:', x, firmaY + 9);
+      doc.line(x + 18, firmaY + 9, x + anchoCol, firmaY + 9);
+      doc.text(nombrePersona || '', x + 20, firmaY + 8);
+
+      doc.text('DNI:', x, firmaY + 17);
+      doc.line(x + 12, firmaY + 17, x + anchoCol, firmaY + 17);
+
+      doc.text('Firma:', x, firmaY + 32);
+      doc.line(x + 16, firmaY + 32, x + anchoCol, firmaY + 32);
+
+      doc.text('Fecha:', x, firmaY + 40);
+      doc.line(x + 16, firmaY + 40, x + anchoCol, firmaY + 40);
+    };
+
+    bloqueFirma(colIzqX, 'Administrador / Responsable de la entrega', nombreAdmin);
+    bloqueFirma(colDerX, 'Técnico / Responsable de la recepción', nombre);
+
+    doc.save(`acta_entrega_${(nombre || 'tecnico').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Generar PDF de entrega — ${nombre}`} width={520}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+        <Input label="Desde" type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} />
+        <Input label="Hasta" type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} />
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--txt-3)', marginBottom: 8 }}>
+        {filas.length} material{filas.length !== 1 ? 'es' : ''} en el rango seleccionado
+      </div>
+
+      <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
+        {filas.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--txt-3)', padding: '16px 0', textAlign: 'center' }}>
+            Sin entregas en ese rango de fechas
+          </div>
+        ) : filas.map((a, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 10px', background: 'var(--bg-3)', borderRadius: 6 }}>
+            <span>{a.item}</span>
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{a.cantidad}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Btn variant="ghost" size="sm" onClick={onClose}>Cancelar</Btn>
+        <Btn variant="primary" size="sm" disabled={filas.length === 0} onClick={generarPdf}>
+          Generar PDF
+        </Btn>
+      </div>
+    </Modal>
   );
 }
 

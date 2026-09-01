@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Upload, Search, RefreshCw, X, Database } from 'lucide-react';
+import { Upload, Search, RefreshCw, X, Database, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ordenesApi, tecnicosApi, siscadreApi } from '../services/api';
 import { Card, EstadoBadge, Table, Tr, Td, Btn, Modal, Input, Select, Spinner, Empty, TimerBadge } from '../components/ui';
@@ -319,19 +319,35 @@ export default function OrdenesPage() {
   });
   const tecnicos = tecnicosData || [];
 
+  const paramsFiltros = () => ({
+    ...filters,
+    ...(tab === 'internet' && { tipos: (grupos.INTERNET || []).join(',') }),
+    ...(tab === 'cable'    && { tipos: (grupos.CABLE    || []).join(',') }),
+    ...(tab === 'duo'      && { tipos: (grupos.DUO      || []).join(',') }),
+    ...(filters.tecnicoId  && { tecnicoId: filters.tecnicoId }),
+    ...(filters.fechaDesde && { fechaDesde: filters.fechaDesde }),
+    ...(filters.fechaHasta && { fechaHasta: filters.fechaHasta }),
+  });
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['ordenes', filters, tab, page],
-    queryFn:  () => ordenesApi.listar({
-      ...filters,
-      page, limit: 25,
-      ...(tab === 'internet' && { tipos: (grupos.INTERNET || []).join(',') }),
-      ...(tab === 'cable'    && { tipos: (grupos.CABLE    || []).join(',') }),
-      ...(tab === 'duo'      && { tipos: (grupos.DUO      || []).join(',') }),
-      ...(filters.tecnicoId  && { tecnicoId: filters.tecnicoId }),
-      ...(filters.fechaDesde && { fechaDesde: filters.fechaDesde }),
-      ...(filters.fechaHasta && { fechaHasta: filters.fechaHasta }),
-    }).then(r => r.data),
+    queryFn:  () => ordenesApi.listar({ ...paramsFiltros(), page, limit: 25 }).then(r => r.data),
     refetchInterval: 30000,
+  });
+
+  const exportarMut = useMutation({
+    mutationFn: () => ordenesApi.exportar(paramsFiltros()),
+    onSuccess: (res) => {
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ordenes_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    },
+    onError: () => toast.error('Error al exportar'),
   });
 
   const ordenes = data?.data || [];
@@ -361,7 +377,15 @@ export default function OrdenesPage() {
             {meta ? `${meta.total} órdenes` : '...'}
           </p>
         </div>
-        <div className="ordenes-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="ordenes-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <Btn
+            variant="ghost" size="sm"
+            onClick={() => exportarMut.mutate()}
+            loading={exportarMut.isPending}
+            icon={<Download size={13} />}
+          >
+            {isMobile ? 'Exportar' : 'Exportar Excel'}
+          </Btn>
           {tieneSiscadre ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
               <Btn
