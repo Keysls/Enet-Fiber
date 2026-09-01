@@ -296,23 +296,38 @@ function OnuPanelInline({ sedeId, productoId, selectedIds, onChange }) {
   );
 }
 
-function OnuEditRow({ onu, onSave }) {
+function OnuEditRow({ onu, onSave, codigosExistentes = [] }) {
   const [editando, setEditando] = React.useState(false);
   const [valor,    setValor]    = React.useState(onu.codigo_pon || '');
   const [loading,  setLoading]  = React.useState(false);
+
+  const valorLimpio = valor.trim().toUpperCase();
+  // Duplicado = coincide con otro código ya registrado (no cuenta el propio valor actual)
+  const esDuplicado = valorLimpio !== '' && valorLimpio !== onu.codigo_pon &&
+    codigosExistentes.some(c => c === valorLimpio);
+
   const guardar = async () => {
-    if (!valor.trim() || valor === onu.codigo_pon) { setEditando(false); return; }
+    if (!valorLimpio || valorLimpio === onu.codigo_pon) { setEditando(false); return; }
+    if (esDuplicado) return; // el botón ya queda deshabilitado, doble seguro
     setLoading(true);
-    try { await onSave(onu.id, valor.trim().toUpperCase()); setEditando(false); }
-    finally { setLoading(false); }
+    try {
+      await onSave(onu.id, valorLimpio);
+      setEditando(false);
+    } catch (e) {
+      // Se queda abierto en edición si falla (ej. duplicado detectado en el
+      // servidor) — antes se cerraba igual y parecía que había funcionado.
+    } finally {
+      setLoading(false);
+    }
   };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: editando ? '0.5px solid #1D9E75' : '0.5px solid var(--border)', background: editando ? '#E1F5EE' : 'var(--bg-card)', transition: 'all .15s' }}>
-      <Wifi size={15} style={{ color: editando ? '#0F6E56' : 'var(--txt-3)', flexShrink: 0 }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, border: esDuplicado ? '1px solid var(--red)' : editando ? '0.5px solid #1D9E75' : '0.5px solid var(--border)', background: esDuplicado ? 'var(--red-bg)' : editando ? '#E1F5EE' : 'var(--bg-card)', transition: 'all .15s' }}>
+      <Wifi size={15} style={{ color: esDuplicado ? 'var(--red)' : editando ? '#0F6E56' : 'var(--txt-3)', flexShrink: 0 }} />
       {editando ? (
         <>
-          <input autoFocus value={valor} onChange={e => setValor(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEditando(false); }} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontFamily: 'var(--font-mono)', color: '#085041' }} />
-          <button onClick={guardar} disabled={loading} style={{ fontSize: 12, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', background: '#9FE1CB', border: 'none', fontWeight: 600 }}>
+          <input autoFocus value={valor} onChange={e => setValor(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEditando(false); }} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 13, fontFamily: 'var(--font-mono)', color: esDuplicado ? 'var(--red)' : '#085041' }} />
+          <button onClick={guardar} disabled={loading || esDuplicado} style={{ fontSize: 12, color: '#0F6E56', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, cursor: (loading || esDuplicado) ? 'not-allowed' : 'pointer', background: esDuplicado ? 'var(--bg-3)' : '#9FE1CB', border: 'none', fontWeight: 600, opacity: esDuplicado ? 0.6 : 1 }}>
             <Check size={13} /> {loading ? '...' : 'Guardar'}
           </button>
           <button onClick={() => { setValor(onu.codigo_pon); setEditando(false); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0F6E56', padding: 4 }}>
@@ -328,6 +343,12 @@ function OnuEditRow({ onu, onSave }) {
           <button onClick={() => setEditando(true)} style={{ fontSize: 12, color: 'var(--txt-3)', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', background: 'none', border: '0.5px solid var(--border)' }}>✏ Editar</button>
         </>
       )}
+    </div>
+    {esDuplicado && (
+      <span style={{ fontSize: 11, color: 'var(--red)', paddingLeft: 4 }}>
+        Ese código ya está registrado en otra ONU.
+      </span>
+    )}
     </div>
   );
 }
@@ -449,8 +470,36 @@ export default function AdminAlmacenInventario() {
   });
 
   const registrarOnuM = useMutation({
-    mutationFn: () => Promise.all((onuForm.codigos_pon || []).filter(c => c.trim()).map(codigo_pon => onusApi.crear({ sedeId, producto_id: onuForm.producto_id, codigo_pon }))),
-    onSuccess: (results) => { toast.success(`${results.length} ONU${results.length !== 1 ? 's' : ''} registrada${results.length !== 1 ? 's' : ''}`); setOnuForm({ producto_id: '', codigos_pon: [''] }); setModal(null); refresh(); },
+    // Promise.allSettled en vez de Promise.all: si un código falla (ej. duplicado),
+    // los demás igual se registran y NO se pierden — antes, con Promise.all, un solo
+    // fallo hacía que se rechazara todo el lote y el contador nunca se actualizaba,
+    // aunque el resto ya se hubiera guardado en la base de datos.
+    mutationFn: async () => {
+      const codigos = (onuForm.codigos_pon || []).map(c => c.trim()).filter(Boolean);
+      const resultados = await Promise.allSettled(
+        codigos.map(codigo_pon => onusApi.crear({ sedeId, producto_id: onuForm.producto_id, codigo_pon }))
+      );
+      const exitosos = codigos.filter((_, i) => resultados[i].status === 'fulfilled');
+      const fallidos = codigos
+        .map((codigo, i) => ({ codigo, resultado: resultados[i] }))
+        .filter(({ resultado }) => resultado.status === 'rejected');
+      return { exitosos, fallidos };
+    },
+    onSuccess: ({ exitosos, fallidos }) => {
+      if (exitosos.length > 0) refresh();
+      if (fallidos.length === 0) {
+        toast.success(`${exitosos.length} ONU${exitosos.length !== 1 ? 's' : ''} registrada${exitosos.length !== 1 ? 's' : ''}`);
+        setOnuForm({ producto_id: '', codigos_pon: [''] });
+        setModal(null);
+      } else {
+        toast.error(
+          `${exitosos.length} registrada${exitosos.length !== 1 ? 's' : ''}, ${fallidos.length} con error (código repetido o inválido). Corrige y vuelve a intentar.`
+        );
+        // Solo dejar en el formulario los que fallaron — los que sí se
+        // registraron no se vuelven a mandar en el siguiente intento.
+        setOnuForm(prev => ({ ...prev, codigos_pon: fallidos.map(f => f.codigo) }));
+      }
+    },
     onError: e => toast.error(e.response?.data?.error || 'No se pudo registrar la ONU'),
   });
 
@@ -824,7 +873,14 @@ export default function AdminAlmacenInventario() {
         const stockTotal   = productoActual?.cantidad || 0;
         const conCodigo    = onusData.filter(o => o.codigo_pon && !o.tecnico_id && !o.cliente && !o.salida_directa);
         const sinCodigo    = Math.max(0, stockTotal - conCodigo.length);
-        const nuevosListos = (onuForm.codigos_pon || []).filter(c => c.trim()).length;
+        const codigosLimpios = (onuForm.codigos_pon || []).map(c => c.trim()).filter(Boolean);
+        const nuevosListos = codigosLimpios.length;
+        // Validación de duplicados antes de enviar: contra los que ya están
+        // registrados (onusData) y contra repetidos dentro del propio formulario.
+        const codigosExistentesSet = new Set(onusData.map(o => o.codigo_pon).filter(Boolean));
+        const codigosDuplicados = [...new Set(codigosLimpios.filter(
+          (c, i) => codigosExistentesSet.has(c) || codigosLimpios.indexOf(c) !== i
+        ))];
         return (
           <UIModal open={true} onClose={() => setModal(null)} title={productoActual ? `ONUs — ${productoActual.producto}` : 'Registrar ONU con PON-SN'}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -863,7 +919,10 @@ export default function AdminAlmacenInventario() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {conCodigo.map(onu => (
                               <OnuEditRow key={onu.id} onu={onu}
-                                onSave={(id, nuevoCodigo) => onusApi.actualizarCodigo(id, { codigo_pon: nuevoCodigo }).then(() => { toast.success('Código actualizado'); qc.invalidateQueries({ queryKey: ['onus-existentes'] }); }).catch(e => toast.error(e.response?.data?.error || 'Error al actualizar'))}
+                                codigosExistentes={onusData.map(o => o.codigo_pon).filter(Boolean)}
+                                onSave={(id, nuevoCodigo) => onusApi.actualizarCodigo(id, { codigo_pon: nuevoCodigo })
+                                  .then(() => { toast.success('Código actualizado'); qc.invalidateQueries({ queryKey: ['onus-existentes'] }); })
+                                  .catch(e => { toast.error(e.response?.data?.error || 'Error al actualizar'); throw e; })}
                               />
                             ))}
                           </div>
@@ -873,13 +932,18 @@ export default function AdminAlmacenInventario() {
                         <div style={{ borderTop: conCodigo.length > 0 ? '0.5px solid var(--border)' : 'none', paddingTop: conCodigo.length > 0 ? 16 : 0 }}>
                           <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sin código — ingresar ({sinCodigo} pendientes)</p>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {(onuForm.codigos_pon || ['']).map((cod, idx) => (
+                            {(onuForm.codigos_pon || ['']).map((cod, idx) => {
+                              const codLimpio = cod.trim().toUpperCase();
+                              const esDup = codLimpio !== '' && codigosDuplicados.includes(codLimpio);
+                              return (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontSize: 12, color: 'var(--txt-3)', fontFamily: 'var(--font-mono)', width: 20, textAlign: 'right', flexShrink: 0 }}>{idx + 1}</span>
-                                <input value={cod} onChange={e => { const next = [...(onuForm.codigos_pon || [''])]; next[idx] = e.target.value.toUpperCase(); setOnuForm({ ...onuForm, codigos_pon: next }); }} placeholder="PON-SN" style={{ flex: 1, height: 36, border: '0.5px solid var(--border)', borderRadius: 8, padding: '0 10px', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none' }} />
+                                <input value={cod} onChange={e => { const next = [...(onuForm.codigos_pon || [''])]; next[idx] = e.target.value.toUpperCase(); setOnuForm({ ...onuForm, codigos_pon: next }); }} placeholder="PON-SN" style={{ flex: 1, height: 36, border: esDup ? '1px solid var(--red)' : '0.5px solid var(--border)', borderRadius: 8, padding: '0 10px', background: esDup ? 'var(--red-bg)' : 'var(--bg-2)', color: esDup ? 'var(--red)' : 'var(--txt)', fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none' }} />
+                                {esDup && <span style={{ fontSize: 10, color: 'var(--red)', flexShrink: 0 }}>duplicado</span>}
                                 {(onuForm.codigos_pon?.length || 1) > 1 && <button onClick={() => setOnuForm({ ...onuForm, codigos_pon: (onuForm.codigos_pon || ['']).filter((_, i) => i !== idx) })} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--txt-3)', flexShrink: 0 }}><X size={15} /></button>}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                           {(onuForm.codigos_pon || []).length < sinCodigo && (
                             <button onClick={() => setOnuForm({ ...onuForm, codigos_pon: [...(onuForm.codigos_pon || ['']), ''] })} style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--txt-3)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0' }}>
@@ -892,13 +956,20 @@ export default function AdminAlmacenInventario() {
                     </div>
                   )}
                   {sinCodigo > 0 && (
-                    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <span style={{ fontSize: 12, color: 'var(--txt-3)' }}>{nuevosListos > 0 ? `${nuevosListos} código${nuevosListos !== 1 ? 's' : ''} listo${nuevosListos !== 1 ? 's' : ''}` : 'Completa al menos un código'}</span>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => setModal(null)} style={{ padding: '0 16px', height: 36, fontSize: 13, cursor: 'pointer', borderRadius: 8, background: 'none', border: '0.5px solid var(--border)', color: 'var(--txt-3)' }}>Cancelar</button>
-                        <button onClick={() => registrarOnuM.mutate()} disabled={nuevosListos === 0 || registrarOnuM.isPending} style={{ padding: '0 16px', height: 36, fontSize: 13, cursor: nuevosListos === 0 ? 'not-allowed' : 'pointer', borderRadius: 8, background: nuevosListos > 0 ? 'var(--txt)' : 'var(--bg-3)', color: nuevosListos > 0 ? 'var(--bg)' : 'var(--txt-3)', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: registrarOnuM.isPending ? 0.6 : 1 }}>
-                          <Check size={14} /> Registrar {nuevosListos > 0 ? `${nuevosListos} ONU${nuevosListos !== 1 ? 's' : ''}` : 'ONUs'}
-                        </button>
+                    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '0.5px solid var(--border)' }}>
+                      {codigosDuplicados.length > 0 && (
+                        <div style={{ marginBottom: 10, padding: '8px 12px', border: '1px solid var(--red)', borderRadius: 8, color: 'var(--red)', background: 'var(--red-bg)', fontSize: 12 }}>
+                          Código{codigosDuplicados.length !== 1 ? 's' : ''} repetido{codigosDuplicados.length !== 1 ? 's' : ''}: <strong style={{ fontFamily: 'var(--font-mono)' }}>{codigosDuplicados.join(', ')}</strong> — corrígelos antes de registrar.
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <span style={{ fontSize: 12, color: 'var(--txt-3)' }}>{nuevosListos > 0 ? `${nuevosListos} código${nuevosListos !== 1 ? 's' : ''} listo${nuevosListos !== 1 ? 's' : ''}` : 'Completa al menos un código'}</span>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={() => setModal(null)} style={{ padding: '0 16px', height: 36, fontSize: 13, cursor: 'pointer', borderRadius: 8, background: 'none', border: '0.5px solid var(--border)', color: 'var(--txt-3)' }}>Cancelar</button>
+                          <button onClick={() => registrarOnuM.mutate()} disabled={nuevosListos === 0 || codigosDuplicados.length > 0 || registrarOnuM.isPending} style={{ padding: '0 16px', height: 36, fontSize: 13, cursor: (nuevosListos === 0 || codigosDuplicados.length > 0) ? 'not-allowed' : 'pointer', borderRadius: 8, background: (nuevosListos > 0 && codigosDuplicados.length === 0) ? 'var(--txt)' : 'var(--bg-3)', color: (nuevosListos > 0 && codigosDuplicados.length === 0) ? 'var(--bg)' : 'var(--txt-3)', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: registrarOnuM.isPending ? 0.6 : 1 }}>
+                            <Check size={14} /> Registrar {nuevosListos > 0 ? `${nuevosListos} ONU${nuevosListos !== 1 ? 's' : ''}` : 'ONUs'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
