@@ -165,16 +165,24 @@ const asignarItems = async (tx, { sedeId, tecnicoId, registradoPor, items = [] }
     // (esta acción es manual, no una cola de reintentos automáticos, así que
     // un envío duplicado real y voluntario segundos después sigue permitido —
     // solo se bloquea un duplicado casi instantáneo del mismo click).
+    // IMPORTANTE: incluir codigoPon en la comparación — si no, al asignar
+    // varias ONUs del mismo modelo en una sola operación (mismo producto y
+    // cantidad:1 cada una, llamadas en milisegundos de diferencia), este
+    // seguro las trataba como "el mismo clic duplicado" y se saltaba todas
+    // menos la primera, sin descontar stock ni dejar registro en el
+    // historial para el resto (bug real detectado: asignar 3 ONUs solo
+    // registraba 1 entrega y descontaba 1 del stock de la sede).
+    const codigoPon = item.codigoPon || null;
     const entregaReciente = await tx.entregaTecnico.findFirst({
       where: {
-        tecnicoId, productoId, sedeId, cantidad,
+        tecnicoId, productoId, sedeId, cantidad, codigoPon,
         fecha: { gte: new Date(Date.now() - 5000) },
       },
     });
     if (entregaReciente) continue;
 
     await tx.entregaTecnico.create({
-      data: { productoId, tecnicoId, sedeId, cantidad, registradoPor: String(registradoPor), codigoPon: item.codigoPon || null },
+      data: { productoId, tecnicoId, sedeId, cantidad, registradoPor: String(registradoPor), codigoPon },
     });
 
     await decrementStockSede(tx, { sedeId, productoId, cantidad });
