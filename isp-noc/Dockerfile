@@ -25,9 +25,12 @@ RUN apk add --no-cache git ca-certificates \
 
 RUN npm ci
 
-# Recibe la variable desde Dokploy y la expone al build de Vite
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
+# Recibe la variable desde Dokploy y la expone al build de Vite.
+# IMPORTANTE: el código (src/services/api.js) lee import.meta.env.VITE_BACKEND_URL,
+# no VITE_API_URL — con el nombre equivocado, Vite nunca la expone y
+# el build siempre cae al valor por defecto localhost:3000.
+ARG VITE_BACKEND_URL
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
 RUN npm run build
 
