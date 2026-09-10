@@ -522,7 +522,7 @@ model AsignacionTecnico {
   tecnicoId  String   @map("tecnico_id")
   productoId Int      @map("producto_id")
   sedeId     String   @map("sede_id")
-  cantidad   Decimal  @db.Decimal(10, 2)
+  cantidad   Decimal  @db.Decimal(10, 3)
   fecha      DateTime @default(now())
   producto   Producto @relation(fields: [productoId], references: [id])
   sede       Sede     @relation(fields: [sedeId], references: [id])
