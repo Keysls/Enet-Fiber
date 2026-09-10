@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Etapa 1: Build
 FROM node:20-alpine AS build
 
@@ -17,7 +18,39 @@ RUN npm run build
 # Etapa 2: Servir con NGINX
 FROM nginx:alpine
 
-COPY nginx.conf /etc/nginx/nginx.conf
+# nginx.conf se genera con RUN (no con COPY) para evitar un bug de
+# BuildKit en el servidor de Dokploy: "COPY nginx.conf" fallaba de forma
+# intermitente con "failed to calculate checksum of ref ...: not found",
+# un problema de caché de build a nivel del propio Docker del servidor,
+# no de este repo. RUN no depende de esa referencia de contexto rota.
+RUN cat <<'NGINXCONF' > /etc/nginx/nginx.conf
+worker_processes  1;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    server {
+        listen 80;
+        server_name localhost;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location ~* \.(js|mjs)$ {
+            add_header Content-Type application/javascript;
+        }
+    }
+}
+NGINXCONF
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
