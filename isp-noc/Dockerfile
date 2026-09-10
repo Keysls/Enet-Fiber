@@ -23,7 +23,7 @@ RUN apk add --no-cache git ca-certificates \
     && cp -r /tmp/repo/isp-noc/. /app/ \
     && rm -rf /tmp/repo
 
-RUN npm install
+RUN npm ci
 
 # Recibe la variable desde Dokploy y la expone al build de Vite
 ARG VITE_API_URL
