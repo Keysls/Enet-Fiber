@@ -413,10 +413,23 @@ async function sincronizarConexion(conexion, sedeId) {
     });
 
   } catch (err) {
+    // Antes solo se capturaban los 3 errores de red más comunes y el resto
+    // se relanzaba, terminando en un 500 genérico ("Error al sincronizar")
+    // sin decir por qué — esto capturaba SOLO problemas de red, no de
+    // credenciales/config de la conexión específica de cada sede (cada
+    // sede apunta a su propio servidor MySQL con sus propias credenciales,
+    // así que un fallo puntual de una sede casi siempre es de su config,
+    // no del sistema en general).
     if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
-      resultado.errorConexion = 'No se pudo conectar al servidor de Siscadre';
+      resultado.errorConexion = 'No se pudo conectar al servidor de Siscadre (host/puerto inaccesible)';
+    } else if (err.code === 'ER_ACCESS_DENIED_ERROR') {
+      resultado.errorConexion = 'Usuario o contraseña incorrectos para la base de datos de Siscadre';
+    } else if (err.code === 'ER_BAD_DB_ERROR') {
+      resultado.errorConexion = `La base de datos "${conexion.siscadreDatabase}" no existe en el servidor`;
+    } else if (err.code === 'ER_PARSE_ERROR' || err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_BAD_FIELD_ERROR') {
+      resultado.errorConexion = `Error en el script SQL configurado: ${err.sqlMessage || err.message}`;
     } else {
-      throw err;
+      resultado.errorConexion = err.message || 'Error desconocido al sincronizar esta conexión';
     }
   } finally {
     if (conn) await conn.end().catch(() => {});

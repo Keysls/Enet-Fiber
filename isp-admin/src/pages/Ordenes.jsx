@@ -297,8 +297,17 @@ export default function OrdenesPage() {
   const sincronizarMut = useMutation({
     mutationFn: () => siscadreApi.sincronizar(usuario.sedeId),
     onSuccess: (res) => {
-      const { nuevas, existentes, total } = res.data;
-      toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)`);
+      const { nuevas, existentes, total, porConexion = [] } = res.data;
+      // Antes esto siempre mostraba éxito, aunque la conexión hubiera
+      // fallado por completo (0 nuevas, 0 existentes, 0 total) — ahora
+      // se revisa si alguna conexión de la sede reportó un error real.
+      const conexionesConError = porConexion.filter(c => c.errorConexion);
+      if (conexionesConError.length > 0) {
+        conexionesConError.forEach(c => toast.error(`${c.tipoServicio}: ${c.errorConexion}`));
+      }
+      if (nuevas > 0 || existentes > 0 || conexionesConError.length === 0) {
+        toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)`);
+      }
       qc.invalidateQueries(['ordenes']);
       qc.invalidateQueries(['siscadre-conexiones']);
     },
