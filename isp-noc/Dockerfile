@@ -4,17 +4,26 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# package*.json se monta con --mount en vez de COPY: el mismo bug de
-# caché rota de BuildKit en el servidor de Dokploy que afectaba a
-# nginx.conf también afecta este COPY de forma intermitente (el paso
-# reporta éxito pero el archivo no está realmente ahí para npm). El
-# bind mount lee el archivo directo del contexto al momento de correr
-# el RUN, sin pasar por el mecanismo de caché de capas que falla.
-RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=package-lock.json,target=package-lock.json \
-    npm install
+# El servidor de Dokploy tiene una caché de BuildKit corrupta que afecta
+# CUALQUIER archivo leído del "contexto de build" local (COPY, --mount
+# de tipo bind), de forma intermitente ("failed to calculate checksum
+# of ref ...: not found") — lo confirmamos en nginx.conf, package.json
+# y package-lock.json por separado, siempre la misma referencia rota.
+# Workaround definitivo: el propio contenedor clona el repo directo
+# desde GitHub durante el build, sin depender del contexto local para
+# nada. COPY --from=<stage> (más abajo) sí funciona bien porque lee de
+# una imagen ya materializada, no del contexto — por eso no se toca.
+# Este ADD fuerza a Docker a revisar si hay un commit nuevo en cada build
+# (compara el contenido remoto) — sin esto, el RUN de abajo se cachearía
+# para siempre y nunca traería código nuevo en deploys futuros.
+ADD https://api.github.com/repos/Keysls/Enet-Fiber/commits/main /tmp/cache_bust.json
 
-COPY . .
+RUN apk add --no-cache git ca-certificates \
+    && git clone --depth 1 --branch main https://github.com/Keysls/Enet-Fiber.git /tmp/repo \
+    && cp -r /tmp/repo/isp-noc/. /app/ \
+    && rm -rf /tmp/repo
+
+RUN npm install
 
 # Recibe la variable desde Dokploy y la expone al build de Vite
 ARG VITE_API_URL
