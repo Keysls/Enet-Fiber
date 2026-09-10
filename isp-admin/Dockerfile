@@ -23,7 +23,7 @@ RUN apk add --no-cache git ca-certificates \
     && cp -r /tmp/repo/isp-admin/. /app/ \
     && rm -rf /tmp/repo
 
-RUN npm install
+RUN npm ci
 
 ARG VITE_BACKEND_URL
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
