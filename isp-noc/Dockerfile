@@ -4,8 +4,15 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# package*.json se monta con --mount en vez de COPY: el mismo bug de
+# caché rota de BuildKit en el servidor de Dokploy que afectaba a
+# nginx.conf también afecta este COPY de forma intermitente (el paso
+# reporta éxito pero el archivo no está realmente ahí para npm). El
+# bind mount lee el archivo directo del contexto al momento de correr
+# el RUN, sin pasar por el mecanismo de caché de capas que falla.
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    npm install
 
 COPY . .
 
