@@ -311,7 +311,13 @@ export default function OrdenesPage() {
       qc.invalidateQueries(['ordenes']);
       qc.invalidateQueries(['siscadre-conexiones']);
     },
-    onError: (e) => toast.error(e.response?.data?.error || 'Error al sincronizar'),
+    onError: (e) => {
+      if (e.code === 'ECONNABORTED') {
+        toast.error('La sincronización tardó demasiado (superó el tiempo de espera). Puede haber muchos registros pendientes en Siscadre.');
+      } else {
+        toast.error(e.response?.data?.error || 'Error al sincronizar');
+      }
+    },
   });
 
   const fmtFechaHora = (f) => {

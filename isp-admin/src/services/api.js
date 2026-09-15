@@ -239,7 +239,11 @@ export const plantaExternaApi = {
 
 export const siscadreApi = {
   listarConexiones: (sedeId) => api.get(`/siscadre/${sedeId}/conexiones`),
-  sincronizar:      (sedeId) => api.post(`/siscadre/${sedeId}/sync`),
+  // El sync procesa filas una por una (puede tardar varios minutos si hay
+  // muchos registros pendientes) — usa un timeout propio, mucho más alto
+  // que el de 30s por defecto del cliente, para que no se corte antes de
+  // que el backend termine.
+  sincronizar:      (sedeId) => api.post(`/siscadre/${sedeId}/sync`, {}, { timeout: 300000 }),
 };
 
 export default api;
