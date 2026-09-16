@@ -251,6 +251,7 @@ async function sincronizarConexion(conexion, sedeId) {
   const resultado = { tipoServicio: conexion.tipoServicio, nuevas: 0, existentes: 0, errores: 0, total: 0, detalles: [] };
 
   try {
+    console.log(`[siscadre] (${conexion.tipoServicio}) conectando a ${conexion.siscadreHost}:${conexion.siscadrePort || 3306}...`);
     conn = await mysql.createConnection({
       host:           conexion.siscadreHost,
       port:           conexion.siscadrePort || 3306,
@@ -259,6 +260,7 @@ async function sincronizarConexion(conexion, sedeId) {
       database:       conexion.siscadreDatabase,
       connectTimeout: 15000,
     });
+    console.log(`[siscadre] (${conexion.tipoServicio}) conectado, ejecutando script...`);
 
     if (!conexion.siscadreScript) {
       resultado.errorConexion = 'Esta conexión no tiene un script SQL configurado';
@@ -267,9 +269,13 @@ async function sincronizarConexion(conexion, sedeId) {
 
     const [rows] = await conn.execute(conexion.siscadreScript);
     resultado.total = rows.length;
+    console.log(`[siscadre] (${conexion.tipoServicio}) script devolvió ${rows.length} filas`);
 
+    let i = 0;
     for (const row of rows) {
+      i++;
       const codigoCompleto = String(row['NÚMERO DE ORDEN']);
+      console.log(`[siscadre] (${conexion.tipoServicio}) fila ${i}/${rows.length}: ${codigoCompleto} — inicio`);
       // nServicio = últimos 4 dígitos, igual que el histórico del Excel
       const nServicio = codigoCompleto.slice(-4);
 
@@ -296,6 +302,7 @@ async function sincronizarConexion(conexion, sedeId) {
         if (existe) {
           resultado.existentes++;
           resultado.detalles.push({ codigo: codigoCompleto, estado: 'existe' });
+          console.log(`[siscadre] (${conexion.tipoServicio}) fila ${i}/${rows.length}: ${codigoCompleto} — ya existía`);
           continue;
         }
 
@@ -396,21 +403,25 @@ async function sincronizarConexion(conexion, sedeId) {
 
         resultado.nuevas++;
         resultado.detalles.push({ codigo: codigoCompleto, estado: 'importada' });
-      
+        console.log(`[siscadre] (${conexion.tipoServicio}) fila ${i}/${rows.length}: ${codigoCompleto} — importada`);
+
       } catch (err) {
         if (err.code === 'P2002') {
             resultado.existentes++;
             resultado.detalles.push({ codigo: codigoCompleto, estado: 'existe' });
+            console.log(`[siscadre] (${conexion.tipoServicio}) fila ${i}/${rows.length}: ${codigoCompleto} — existe (P2002)`);
           } else {
           throw err;
         }
       }
     }
 
+    console.log(`[siscadre] (${conexion.tipoServicio}) loop terminado, actualizando siscadreLastSync...`);
     await prisma.siscadreConexion.update({
       where: { id: conexion.id },
       data:  { siscadreLastSync: new Date() },
     });
+    console.log(`[siscadre] (${conexion.tipoServicio}) listo`);
 
   } catch (err) {
     // Antes solo se capturaban los 3 errores de red más comunes y el resto
