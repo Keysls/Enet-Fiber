@@ -233,6 +233,9 @@ const obtener = async (req, res, next) => {
       ipWan:      contrato.ipWan,
       mascara:    contrato.mascara,
       gateway:    contrato.gateway,
+      usaPppoe:      contrato.usaPppoe,
+      pppoeUser:     contrato.pppoeUser,
+      pppoePassword: contrato.pppoePassword,
       createdAt:  contrato.createdAt,
       updatedAt:  contrato.updatedAt,
       mbps:       contrato.mbps    || null,       // ← AGREGAR
@@ -324,6 +327,7 @@ for (const c of contratos) {
 // ── PATCH /api/contratos/:numero/wan ──────────────────────────
 const guardarWan = async (req, res, next) => {
   try {
+    const { usaPppoe, pppoeUser, pppoePassword } = req.body;
     const { ipWan, mascara, gateway } = req.body;
     const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
@@ -331,10 +335,29 @@ const guardarWan = async (req, res, next) => {
       return res.status(400).json({ error: 'Debe indicar la sede del contrato (sedeId)' });
     }
 
-    const esIp = (v) => /^(\d{1,3}\.){3}\d{1,3}$/.test(v || '');
-    if (!esIp(ipWan))   return res.status(400).json({ error: 'IP WAN inválida' });
-    if (!esIp(mascara)) return res.status(400).json({ error: 'Máscara inválida' });
-    if (!esIp(gateway)) return res.status(400).json({ error: 'Gateway inválido' });
+    let dataActualizar;
+    if (usaPppoe) {
+      if (!pppoeUser || !String(pppoeUser).trim())
+        return res.status(400).json({ error: 'Usuario PPPoE es obligatorio' });
+      if (!pppoePassword || !String(pppoePassword).trim())
+        return res.status(400).json({ error: 'Contraseña PPPoE es obligatoria' });
+      dataActualizar = {
+        usaPppoe: true,
+        pppoeUser: pppoeUser.trim(),
+        pppoePassword: pppoePassword.trim(),
+        ipWan: null, mascara: null, gateway: null,
+      };
+    } else {
+      const esIp = (v) => /^(\d{1,3}\.){3}\d{1,3}$/.test(v || '');
+      if (!esIp(ipWan))   return res.status(400).json({ error: 'IP WAN inválida' });
+      if (!esIp(mascara)) return res.status(400).json({ error: 'Máscara inválida' });
+      if (!esIp(gateway)) return res.status(400).json({ error: 'Gateway inválido' });
+      dataActualizar = {
+        usaPppoe: false,
+        ipWan, mascara, gateway,
+        pppoeUser: null, pppoePassword: null,
+      };
+    }
 
     const tipoServicioQuery = req.query.tipoServicio || req.body.tipoServicio || undefined;
     const contrato = await prisma.contrato.findFirst({
@@ -348,7 +371,7 @@ const guardarWan = async (req, res, next) => {
 
     const actualizado = await prisma.contrato.update({
       where: { id: contrato.id },
-      data:  { ipWan, mascara, gateway },
+      data:  dataActualizar,
     });
 
     await prisma.logActividad.create({
@@ -357,7 +380,7 @@ const guardarWan = async (req, res, next) => {
         accion:     'GUARDAR_WAN_CONTRATO',
         tabla:      'contratos',
         registroId: contrato.numero,
-        detalles:   { ipWan, mascara, gateway },
+        detalles:   dataActualizar,
         ip:         req.ip,
       },
     });

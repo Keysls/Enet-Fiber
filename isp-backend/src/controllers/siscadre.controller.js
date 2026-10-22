@@ -1,7 +1,7 @@
 const prisma = require('../utils/prisma');
 const mysql  = require('mysql2/promise');
 const { encrypt, decrypt } = require('./siscadre/encryption');
-const { upsertContratoDesdeOrden, wanHeredableDelContrato } = require('./ordenes.controller');
+const { upsertContratoDesdeOrden, wanHeredableDelContrato, camposWanHeredada } = require('./ordenes.controller');
 const { TIPOS_NOC_TECNICO } = require('../utils/tipoOrden');
 
 
@@ -393,11 +393,7 @@ async function sincronizarConexion(conexion, sedeId) {
             mensualidad,
             ...(mbps   != null && { mbps }),
             ...(planId != null && { planId }),
-            ...(wanHeredada && {
-              ipWan:   wanHeredada.ipWan,
-              mascara: wanHeredada.mascara,
-              gateway: wanHeredada.gateway,
-            }),
+            ...camposWanHeredada(wanHeredada),
           },
         });
 

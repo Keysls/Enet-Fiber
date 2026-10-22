@@ -129,6 +129,9 @@ model Contrato {
   ipWan        String?
   mascara      String?
   gateway      String?
+  usaPppoe     Boolean         @default(false)
+  pppoeUser    String?
+  pppoePassword String?
   latitud      Float?
   longitud     Float?
   precinto     String?
@@ -169,6 +172,9 @@ model OrdenServicio {
   ipWan             String?
   mascara           String?
   gateway           String?
+  usaPppoe          Boolean   @default(false)
+  pppoeUser         String?
+  pppoePassword     String?
   fechaWan          DateTime?
   nocUsuarioId      String?
   fechaAceptacion   DateTime?

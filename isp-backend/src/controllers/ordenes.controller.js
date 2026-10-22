@@ -55,15 +55,47 @@ const wanHeredableDelContrato = async (tx, numeroContrato, tipoOrden, sedeId) =>
 
   const contrato = await tx.contrato.findUnique({
     where:  { numero_sedeId_tipoServicio: { numero: String(numeroContrato).trim(), sedeId, tipoServicio } },
-    select: { ipWan: true, mascara: true, gateway: true },
+    select: { ipWan: true, mascara: true, gateway: true, usaPppoe: true, pppoeUser: true, pppoePassword: true },
   });
 
-  if (!contrato?.ipWan) return null;
+  if (!contrato) return null;
+  if (contrato.usaPppoe) {
+    if (!contrato.pppoeUser) return null;
+    return {
+      usaPppoe:      true,
+      pppoeUser:     contrato.pppoeUser,
+      pppoePassword: contrato.pppoePassword,
+    };
+  }
+
+  if (!contrato.ipWan) return null;
 
   return {
-    ipWan:   contrato.ipWan,
-    mascara: contrato.mascara,
-    gateway: contrato.gateway,
+    usaPppoe: false,
+    ipWan:    contrato.ipWan,
+    mascara:  contrato.mascara,
+    gateway:  contrato.gateway,
+  };
+};
+
+// ── Helper: arma los campos de OrdenServicio a partir de lo heredado
+// (IP estática o PPPoE, según corresponda) ─────────────────────
+const camposWanHeredada = (wanHeredada) => {
+  if (!wanHeredada) return {};
+  if (wanHeredada.usaPppoe) {
+    return {
+      usaPppoe:      true,
+      pppoeUser:     wanHeredada.pppoeUser,
+      pppoePassword: wanHeredada.pppoePassword,
+      fechaWan:      new Date(),
+    };
+  }
+  return {
+    usaPppoe: false,
+    ipWan:    wanHeredada.ipWan,
+    mascara:  wanHeredada.mascara,
+    gateway:  wanHeredada.gateway,
+    fechaWan: new Date(),
   };
 };
 
@@ -521,12 +553,7 @@ const wanHeredada = await wanHeredableDelContrato(tx, o.contrato, o.tipoOrden, s
                 tecnicoId:       tecnicoValidado.id,
                 fechaAsignacion: new Date(),
               }),
-              ...(wanHeredada && {
-                ipWan:    wanHeredada.ipWan,
-                mascara:  wanHeredada.mascara,
-                gateway:  wanHeredada.gateway,
-                fechaWan: new Date(),
-              }),
+              ...camposWanHeredada(wanHeredada),
             },
           });
         });
@@ -584,12 +611,7 @@ const wanHeredada = await wanHeredableDelContrato(tx, contrato, tipoOrden, sedeI
           abonado,       dni,      direccion,    sector, celular, observacion,
           pdfOriginalUrl: pdfArchivo ? `/uploads/pdfs/${pdfArchivo}` : null,
           sedeId,
-          ...(wanHeredada && {
-            ipWan:    wanHeredada.ipWan,
-            mascara:  wanHeredada.mascara,
-            gateway:  wanHeredada.gateway,
-            fechaWan: new Date(),
-          }),
+          ...camposWanHeredada(wanHeredada),
         },
       });
     });
@@ -628,7 +650,8 @@ const asignar = async (req, res, next) => {
     // ¿El contrato ya tiene WAN? Ahora que hay técnico, la orden puede heredarla.
     // Solo aplica si la orden todavía no tiene WAN propia (no pisar una ya configurada).
     const orden = await prisma.$transaction(async (tx) => {
-      const wanHeredada = !ordenActual.ipWan
+      const yaTeníaWan = !!ordenActual.ipWan || !!ordenActual.usaPppoe;
+      const wanHeredada = !yaTeníaWan
         ? await wanHeredableDelContrato(tx, ordenActual.contrato, ordenActual.tipoOrden, ordenActual.sedeId)
         : null;
 
@@ -637,7 +660,6 @@ const asignar = async (req, res, next) => {
       // 2. Si hereda WAN del contrato → PENDIENTE_TECNICO
       // 3. Si necesita WAN y no tiene → PENDIENTE_NOC
       // 4. Si no necesita WAN (cable, cortes, etc.) → PENDIENTE_TECNICO
-      const yaTeníaWan = !!ordenActual.ipWan;
       const estadoBase = TIPOS_NOC.includes(ordenActual.tipoOrden)
         ? 'PENDIENTE_NOC'
         : 'PENDIENTE_TECNICO';
@@ -649,12 +671,7 @@ const asignar = async (req, res, next) => {
           tecnicoId,
           fechaAsignacion: new Date(),
           estado: estadoFinal,
-          ...(wanHeredada && {
-            ipWan:    wanHeredada.ipWan,
-            mascara:  wanHeredada.mascara,
-            gateway:  wanHeredada.gateway,
-            fechaWan: new Date(),
-          }),
+          ...camposWanHeredada(wanHeredada),
         },
         include: { tecnico: { include: { usuario: { select: { nombre: true, apellido: true, telefono: true } } } } },
       });
@@ -676,9 +693,25 @@ const asignar = async (req, res, next) => {
 // ── PATCH /api/ordenes/:id/datos-wan (NOC) ────────────────────
 const ponerWan = async (req, res, next) => {
   try {
-    const { ipWan, mascara, gateway, datos } = req.body;
-    if (!ipWan || !mascara || !gateway)
-      return res.status(400).json({ error: 'ipWan, mascara y gateway son requeridos' });
+    const { usaPppoe, pppoeUser, pppoePassword, ipWan, mascara, gateway, datos } = req.body;
+
+    let datosWan;
+    if (usaPppoe) {
+      if (!pppoeUser || !String(pppoeUser).trim())
+        return res.status(400).json({ error: 'Usuario PPPoE es obligatorio' });
+      if (!pppoePassword || !String(pppoePassword).trim())
+        return res.status(400).json({ error: 'Contraseña PPPoE es obligatoria' });
+      datosWan = {
+        usaPppoe: true,
+        pppoeUser: pppoeUser.trim(),
+        pppoePassword: pppoePassword.trim(),
+        ipWan: null, mascara: null, gateway: null,
+      };
+    } else {
+      if (!ipWan || !mascara || !gateway)
+        return res.status(400).json({ error: 'ipWan, mascara y gateway son requeridos' });
+      datosWan = { usaPppoe: false, ipWan, mascara, gateway, pppoeUser: null, pppoePassword: null };
+    }
 
     const orden = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
@@ -713,7 +746,7 @@ const ponerWan = async (req, res, next) => {
       const ordenWan = await tx.ordenServicio.update({
         where: { id: req.params.id },
         data:  {
-          ipWan, mascara, gateway,
+          ...datosWan,
           fechaWan:     new Date(),
           nocUsuarioId: req.usuario.id,
           estado:       'PENDIENTE_TECNICO',
@@ -728,7 +761,7 @@ const ponerWan = async (req, res, next) => {
               sedeId:       ordenWan.sedeId,
               tipoServicio: ordenWan.tipoServicio,
             },
-            data: { ipWan, mascara, gateway },
+            data: datosWan,
           });
         }
 
@@ -736,7 +769,7 @@ const ponerWan = async (req, res, next) => {
     });
 
     await prisma.logActividad.create({
-      data: { usuarioId: req.usuario.id, accion: 'PONER_WAN_NOC', tabla: 'ordenes_servicio', registroId: orden.id, detalles: { ipWan, mascara, gateway, datosActualizados: !!datos }, ip: req.ip },
+      data: { usuarioId: req.usuario.id, accion: 'PONER_WAN_NOC', tabla: 'ordenes_servicio', registroId: orden.id, detalles: { ...datosWan, datosActualizados: !!datos }, ip: req.ip },
     });
 
     res.json({ orden: actualizada, mensaje: 'WAN configurada. Orden enviada al técnico.' });
@@ -1352,6 +1385,7 @@ module.exports = {
   asignar, ponerWan, nocCompletar, aceptar, cambiarEstado,
   stats, actualizarDatos, historialWan, reportes, notificaciones,
   eliminar, restaurar, papelera, upsertContratoDesdeOrden,wanHeredableDelContrato,
+  camposWanHeredada,
   exportarCsv,
   TIPOS_NOC,
 };
