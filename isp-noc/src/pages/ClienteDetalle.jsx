@@ -341,21 +341,24 @@ function SubSeccion({ label }) {
   );
 }
 
-// ── WAN del contrato (editable) ───────────────────────────────
+// ── WAN del contrato (editable, IP estática o PPPoE) ───────────
 function WanContrato({ contrato }) {
   const qc = useQueryClient();
   const [editando, setEditando] = useState(false);
+  const [usaPppoe, setUsaPppoe] = useState(!!contrato.usaPppoe);
   const [form, setForm] = useState({
-    ipWan:   contrato.ipWan   || '',
-    mascara: contrato.mascara || '255.255.255.0',
-    gateway: contrato.gateway || '',
+    ipWan:         contrato.ipWan   || '',
+    mascara:       contrato.mascara || '255.255.255.0',
+    gateway:       contrato.gateway || '',
+    pppoeUser:     contrato.pppoeUser     || '',
+    pppoePassword: contrato.pppoePassword || '',
   });
   const [errores, setErrores] = useState({});
 
-  const tieneWan = !!contrato.ipWan;
+  const tieneWan = contrato.usaPppoe ? !!contrato.pppoeUser : !!contrato.ipWan;
 
   const mut = useMutation({
-      mutationFn: () => contratosApi.guardarWan(contrato.numero, form, contrato.sede?.id),
+    mutationFn: () => contratosApi.guardarWan(contrato.numero, { ...form, usaPppoe }, contrato.sede?.id),
     onSuccess: () => {
       toast.success('WAN del contrato guardada');
       qc.invalidateQueries(['contrato', contrato.numero, contrato.sede?.id]);
@@ -369,9 +372,14 @@ function WanContrato({ contrato }) {
 
   const guardar = () => {
     const e = {};
-    if (!esIp(form.ipWan))   e.ipWan   = 'IP inválida';
-    if (!esIp(form.mascara)) e.mascara = 'Máscara inválida';
-    if (!esIp(form.gateway)) e.gateway = 'Gateway inválido';
+    if (usaPppoe) {
+      if (!form.pppoeUser.trim())     e.pppoeUser     = 'Usuario obligatorio';
+      if (!form.pppoePassword.trim()) e.pppoePassword = 'Contraseña obligatoria';
+    } else {
+      if (!esIp(form.ipWan))   e.ipWan   = 'IP inválida';
+      if (!esIp(form.mascara)) e.mascara = 'Máscara inválida';
+      if (!esIp(form.gateway)) e.gateway = 'Gateway inválido';
+    }
     if (Object.keys(e).length) { setErrores(e); return; }
     setErrores({});
     mut.mutate();
@@ -379,10 +387,13 @@ function WanContrato({ contrato }) {
 
   const cancelar = () => {
     setForm({
-      ipWan:   contrato.ipWan   || '',
-      mascara: contrato.mascara || '255.255.255.0',
-      gateway: contrato.gateway || '',
+      ipWan:         contrato.ipWan   || '',
+      mascara:       contrato.mascara || '255.255.255.0',
+      gateway:       contrato.gateway || '',
+      pppoeUser:     contrato.pppoeUser     || '',
+      pppoePassword: contrato.pppoePassword || '',
     });
+    setUsaPppoe(!!contrato.usaPppoe);
     setErrores({});
     setEditando(false);
   };
@@ -407,7 +418,7 @@ function WanContrato({ contrato }) {
             borderRadius: 7, padding: '5px 10px', cursor: 'pointer',
             fontSize: 11, fontWeight: 600, color: 'var(--accent)',
           }}>
-            <Pencil size={11}/> {tieneWan ? 'Editar' : 'Registrar IP'}
+            <Pencil size={11}/> {tieneWan ? 'Editar' : 'Registrar WAN'}
           </button>
         )}
       </div>
@@ -416,14 +427,23 @@ function WanContrato({ contrato }) {
         {/* ── Modo lectura ── */}
         {!editando && (
           tieneWan ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
-              <Field label="IP WAN"  value={contrato.ipWan}   mono/>
-              <Field label="Máscara" value={contrato.mascara || '—'} mono/>
-              <Field label="Gateway" value={contrato.gateway || '—'} mono/>
-            </div>
+            contrato.usaPppoe ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                <Field label="Modo" value="PPPoE"/>
+                <Field label="Usuario PPPoE" value={contrato.pppoeUser} mono/>
+                <Field label="Contraseña PPPoE" value={contrato.pppoePassword} mono/>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                <Field label="Modo" value="IP Estática"/>
+                <Field label="IP WAN"  value={contrato.ipWan}   mono/>
+                <Field label="Máscara" value={contrato.mascara || '—'} mono/>
+                <Field label="Gateway" value={contrato.gateway || '—'} mono/>
+              </div>
+            )
           ) : (
             <div style={{ fontSize: 12, color: 'var(--txt-3)', textAlign: 'center', padding: '8px 0' }}>
-              Este contrato aún no tiene IP registrada. Las órdenes nuevas pedirán configurar la WAN.
+              Este contrato aún no tiene WAN registrada. Las órdenes nuevas pedirán configurarla.
             </div>
           )
         )}
@@ -431,11 +451,44 @@ function WanContrato({ contrato }) {
         {/* ── Modo edición ── */}
         {editando && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
-              <CampoEdit label="IP WAN *"  value={form.ipWan}   onChange={v => setF('ipWan', v)}   error={errores.ipWan}   placeholder="200.x.x.x"/>
-              <CampoEdit label="Máscara *" value={form.mascara} onChange={v => setF('mascara', v)} error={errores.mascara} placeholder="255.255.255.0"/>
-              <CampoEdit label="Gateway *" value={form.gateway} onChange={v => setF('gateway', v)} error={errores.gateway} placeholder="200.x.x.1"/>
+            {/* Switch IP Estática / PPPoE */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: !usaPppoe ? 'var(--txt)' : 'var(--txt-3)' }}>
+                IP Estática
+              </span>
+              <button
+                type="button"
+                onClick={() => setUsaPppoe(p => !p)}
+                style={{
+                  width: 38, height: 20, borderRadius: 999, border: 'none', cursor: 'pointer',
+                  background: usaPppoe ? 'var(--accent)' : 'var(--border-2)',
+                  position: 'relative', transition: 'background 0.15s', flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, left: usaPppoe ? 20 : 2,
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                  transition: 'left 0.15s',
+                }}/>
+              </button>
+              <span style={{ fontSize: 12, fontWeight: 600, color: usaPppoe ? 'var(--txt)' : 'var(--txt-3)' }}>
+                PPPoE
+              </span>
             </div>
+
+            {usaPppoe ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <CampoEdit label="Usuario PPPoE *"     value={form.pppoeUser}     onChange={v => setF('pppoeUser', v)}     error={errores.pppoeUser}     placeholder="usuario@enet"/>
+                <CampoEdit label="Contraseña PPPoE *"  value={form.pppoePassword} onChange={v => setF('pppoePassword', v)} error={errores.pppoePassword} placeholder="contraseña"/>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+                <CampoEdit label="IP WAN *"  value={form.ipWan}   onChange={v => setF('ipWan', v)}   error={errores.ipWan}   placeholder="200.x.x.x"/>
+                <CampoEdit label="Máscara *" value={form.mascara} onChange={v => setF('mascara', v)} error={errores.mascara} placeholder="255.255.255.0"/>
+                <CampoEdit label="Gateway *" value={form.gateway} onChange={v => setF('gateway', v)} error={errores.gateway} placeholder="200.x.x.1"/>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={cancelar} disabled={mut.isPending} style={{
                 display: 'flex', alignItems: 'center', gap: 5,

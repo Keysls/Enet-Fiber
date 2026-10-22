@@ -48,10 +48,11 @@ function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const
   const [textoPegado,    setTextoPegado]    = useState('');
   const [parsedPreview,  setParsedPreview]  = useState(null);
 
-  const [wan, setWan] = useState({ ipWan: '', mascara: '255.255.255.0', gateway: '' });
+  const [wan, setWan] = useState({ ipWan: '', mascara: '255.255.255.0', gateway: '', pppoeUser: '', pppoePassword: '' });
+  const [usaPppoe, setUsaPppoe] = useState(false);
   const setW = (k, v) => setWan(p => ({ ...p, [k]: v }));
   const [erroresWan, setErroresWan] = useState({});
-  const esEdicion = !!orden?.ipWan;
+  const esEdicion = !!orden?.ipWan || !!orden?.usaPppoe;
 
   React.useEffect(() => {
     if (open && orden) {
@@ -61,7 +62,11 @@ function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const
         referencia: orden.referencia || '', sector: orden.sector || '',
         tipoOrden: orden.tipoOrden || 'INSTALACION_I', observacion: orden.observacion || '',
       });
-      setWan({ ipWan: orden.ipWan || '', mascara: orden.mascara || '255.255.255.0', gateway: orden.gateway || '' });
+      setWan({
+        ipWan: orden.ipWan || '', mascara: orden.mascara || '255.255.255.0', gateway: orden.gateway || '',
+        pppoeUser: orden.pppoeUser || '', pppoePassword: orden.pppoePassword || '',
+      });
+      setUsaPppoe(!!orden.usaPppoe);
       setTextoPegado('');
       setParsedPreview(null);
       setErroresWan({});
@@ -83,6 +88,7 @@ function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const
       if (datos.observacion !== orden.observacion) cambios.observacion = datos.observacion;
       return ordenesApi.ponerWan(orden.id, {
         ...wan,
+        usaPppoe,
         ...(Object.keys(cambios).length > 0 && { datos: cambios }),
       });
     },
@@ -99,9 +105,14 @@ function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const
   const validarIp = ip => /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
   const handleConfirmar = () => {
     const e = {};
-    if (!wan.ipWan   || !validarIp(wan.ipWan))   e.ipWan   = 'IP inválida';
-    if (!wan.mascara || !validarIp(wan.mascara)) e.mascara = 'Máscara inválida';
-    if (!wan.gateway || !validarIp(wan.gateway)) e.gateway = 'Gateway inválido';
+    if (usaPppoe) {
+      if (!wan.pppoeUser.trim())     e.pppoeUser     = 'Usuario obligatorio';
+      if (!wan.pppoePassword.trim()) e.pppoePassword = 'Contraseña obligatoria';
+    } else {
+      if (!wan.ipWan   || !validarIp(wan.ipWan))   e.ipWan   = 'IP inválida';
+      if (!wan.mascara || !validarIp(wan.mascara)) e.mascara = 'Máscara inválida';
+      if (!wan.gateway || !validarIp(wan.gateway)) e.gateway = 'Gateway inválido';
+    }
     if (Object.keys(e).length) { setErroresWan(e); return; }
     setErroresWan({});
     mutActualizar.mutate();
@@ -317,44 +328,93 @@ function DrawerWan({ open, onClose, orden, tiposTecnico, tipoLabelFn }) {  const
             </div>
 
             <div style={{ padding: '12px 16px' }}>
-              {esEdicion && orden.ipWan && (
+              {esEdicion && (orden.ipWan || orden.usaPppoe) && (
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
                   <div style={{ fontSize: 10, color: '#dc2626', marginBottom: 2, fontWeight: 600 }}>WAN actual — será reemplazada</div>
                   <div style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>
-                    {orden.ipWan} / {orden.mascara} → {orden.gateway}
+                    {orden.usaPppoe
+                      ? `PPPoE: ${orden.pppoeUser}`
+                      : `${orden.ipWan} / ${orden.mascara} → ${orden.gateway}`}
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <Field label="IP WAN *" error={erroresWan.ipWan}>
-                  <input
-                    value={wan.ipWan}
-                    onChange={e => setW('ipWan', e.target.value)}
-                    style={{ ...inputStyle, ...(erroresWan.ipWan ? { borderColor: '#dc2626' } : {}) }}
-                    placeholder="200.x.x.x"
-                    autoFocus
-                  />
-                </Field>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <Field label="Máscara *" error={erroresWan.mascara}>
+              {/* Switch IP Estática / PPPoE */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: !usaPppoe ? '#0f172a' : '#94a3b8' }}>
+                  IP Estática
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setUsaPppoe(p => !p)}
+                  style={{
+                    width: 38, height: 20, borderRadius: 999, border: 'none', cursor: 'pointer',
+                    background: usaPppoe ? '#3b9fd4' : '#e2e8f0',
+                    position: 'relative', transition: 'background 0.15s', flexShrink: 0,
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: usaPppoe ? 20 : 2,
+                    width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                    transition: 'left 0.15s',
+                  }}/>
+                </button>
+                <span style={{ fontSize: 12, fontWeight: 600, color: usaPppoe ? '#0f172a' : '#94a3b8' }}>
+                  PPPoE
+                </span>
+              </div>
+
+              {usaPppoe ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="Usuario PPPoE *" error={erroresWan.pppoeUser}>
                     <input
-                      value={wan.mascara}
-                      onChange={e => setW('mascara', e.target.value)}
-                      style={{ ...inputStyle, ...(erroresWan.mascara ? { borderColor: '#dc2626' } : {}) }}
-                      placeholder="255.255.255.0"
+                      value={wan.pppoeUser}
+                      onChange={e => setW('pppoeUser', e.target.value)}
+                      style={{ ...inputStyle, ...(erroresWan.pppoeUser ? { borderColor: '#dc2626' } : {}) }}
+                      placeholder="usuario@enet"
+                      autoFocus
                     />
                   </Field>
-                  <Field label="Gateway *" error={erroresWan.gateway}>
+                  <Field label="Contraseña PPPoE *" error={erroresWan.pppoePassword}>
                     <input
-                      value={wan.gateway}
-                      onChange={e => setW('gateway', e.target.value)}
-                      style={{ ...inputStyle, ...(erroresWan.gateway ? { borderColor: '#dc2626' } : {}) }}
-                      placeholder="200.x.x.1"
+                      value={wan.pppoePassword}
+                      onChange={e => setW('pppoePassword', e.target.value)}
+                      style={{ ...inputStyle, ...(erroresWan.pppoePassword ? { borderColor: '#dc2626' } : {}) }}
+                      placeholder="contraseña"
                     />
                   </Field>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Field label="IP WAN *" error={erroresWan.ipWan}>
+                    <input
+                      value={wan.ipWan}
+                      onChange={e => setW('ipWan', e.target.value)}
+                      style={{ ...inputStyle, ...(erroresWan.ipWan ? { borderColor: '#dc2626' } : {}) }}
+                      placeholder="200.x.x.x"
+                      autoFocus
+                    />
+                  </Field>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <Field label="Máscara *" error={erroresWan.mascara}>
+                      <input
+                        value={wan.mascara}
+                        onChange={e => setW('mascara', e.target.value)}
+                        style={{ ...inputStyle, ...(erroresWan.mascara ? { borderColor: '#dc2626' } : {}) }}
+                        placeholder="255.255.255.0"
+                      />
+                    </Field>
+                    <Field label="Gateway *" error={erroresWan.gateway}>
+                      <input
+                        value={wan.gateway}
+                        onChange={e => setW('gateway', e.target.value)}
+                        style={{ ...inputStyle, ...(erroresWan.gateway ? { borderColor: '#dc2626' } : {}) }}
+                        placeholder="200.x.x.1"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -763,10 +823,16 @@ function ConfiguradaCard({ orden, onEditarWan, tipoLabelFn }) {
         </div>
       )}
 
-      {o.ipWan && (
+      {(o.ipWan || o.usaPppoe) && (
         <div style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 8 }}>
-          <span style={{ color: '#3B9FD4', fontWeight: 600 }}>{o.ipWan}</span>
-          <span style={{ color: 'var(--txt-3)', fontSize: 11 }}> · {o.mascara} · GW {o.gateway}</span>
+          {o.usaPppoe ? (
+            <span style={{ color: '#3B9FD4', fontWeight: 600 }}>PPPoE: {o.pppoeUser}</span>
+          ) : (
+            <>
+              <span style={{ color: '#3B9FD4', fontWeight: 600 }}>{o.ipWan}</span>
+              <span style={{ color: 'var(--txt-3)', fontSize: 11 }}> · {o.mascara} · GW {o.gateway}</span>
+            </>
+          )}
         </div>
       )}
 
@@ -936,7 +1002,12 @@ function TablaConfiguradas({ ordenes, onEditarWan, tipoLabelFn }) {
                   <TipoBadge tipoOrden={o.tipoOrden} tipoLabelFn={tipoLabelFn} />
                 </td>
                 <td style={rowTd}>
-                  {o.ipWan ? (
+                  {o.usaPppoe ? (
+                    <div style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      <div style={{ color: '#3B9FD4', fontWeight: 600 }}>PPPoE</div>
+                      <div style={{ color: 'var(--txt-3)', fontSize: 11 }}>{o.pppoeUser}</div>
+                    </div>
+                  ) : o.ipWan ? (
                     <div style={{ fontFamily: 'monospace', fontSize: 12 }}>
                       <div style={{ color: '#3B9FD4', fontWeight: 600 }}>{o.ipWan}</div>
                       <div style={{ color: 'var(--txt-3)', fontSize: 11 }}>{o.mascara} · GW {o.gateway}</div>
