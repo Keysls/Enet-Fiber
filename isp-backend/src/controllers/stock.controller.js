@@ -960,6 +960,85 @@ const auditoriaControlador = async (req, res, next) => {
 
 // ── GET /api/stock/tecnico/:tecnicoId ────────────────────────
 // Inventario asignado a un técnico específico
+// ── POST /api/stock/recomposicion ─────────────────────────────
+// Descuenta `descontar` unidades/metros del stock de un técnico como consumo
+// RECOMPOSICION (positivo = gastó más; negativo = se había descontado de más).
+// Mismo cálculo de disponible que el panel de inventario.
+const recomponerInventario = async (req, res, next) => {
+  try {
+    const tecnicoId  = req.body.tecnicoId  || req.body.tecnico_id;
+    const productoId = Number(req.body.productoId ?? req.body.producto_id);
+    const descontar  = Number(req.body.descontar);
+    const nota       = String(req.body.nota || '').trim();
+
+    if (!tecnicoId || !Number.isInteger(productoId))
+      return res.status(400).json({ error: 'Faltan técnico o producto' });
+    if (!Number.isInteger(descontar) || descontar === 0)
+      return res.status(400).json({ error: 'La cantidad a descontar debe ser un número entero distinto de 0' });
+    if (nota.length < 3)
+      return res.status(400).json({ error: 'Escribe una nota explicando el motivo de la recomposición' });
+
+    const tecnico = await prisma.tecnico.findUnique({ where: { id: tecnicoId } });
+    if (!tecnico) return res.status(404).json({ error: 'Técnico no encontrado' });
+    if (req.usuario.rol === 'ADMIN' && tecnico.sedeId !== req.usuario.sedeId)
+      return res.status(403).json({ error: 'Este técnico no pertenece a tu sede' });
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      const asignacion = await tx.asignacionTecnico.findFirst({
+        where:   { tecnicoId, productoId, sedeId: tecnico.sedeId },
+        include: { producto: { select: { nombre: true, esMedible: true, metrosPorUnidad: true, unidad: true } } },
+      });
+      if (!asignacion) throw Object.assign(new Error('El técnico no tiene este producto asignado'), { status: 404 });
+
+      const onusConCodigo = await tx.onu.count({ where: { tecnicoId, productoId } });
+      if (onusConCodigo > 0)
+        throw Object.assign(new Error('Este producto se maneja por código PON (ONUs); no se puede recomponer por cantidad'), { status: 422 });
+
+      const medible = asignacion.producto.esMedible && asignacion.producto.metrosPorUnidad;
+      const total   = Number(asignacion.cantidad) * (medible ? asignacion.producto.metrosPorUnidad : 1);
+      const suma    = await tx.consumoTecnico.aggregate({ where: { tecnicoId, productoId }, _sum: { cantidad: true } });
+      const gastado = Number(suma._sum.cantidad || 0);
+      const disponible = total - gastado;
+
+      const unidad  = medible ? 'm' : (asignacion.producto.unidad || 'und');
+      const ajuste  = descontar;
+      const deseada = disponible - ajuste;
+      if (deseada < 0)
+        throw Object.assign(new Error(`No se puede descontar ${ajuste} ${unidad}: el técnico solo tiene ${disponible} ${unidad} disponibles`), { status: 422 });
+      if (deseada > total)
+        throw Object.assign(new Error(`El resultado (${deseada} ${unidad}) superaría lo asignado (${total} ${unidad})`), { status: 422 });
+
+      const consumo = await tx.consumoTecnico.create({
+        data: {
+          tecnicoId, productoId,
+          cantidad:    ajuste,
+          motivo:      'RECOMPOSICION',
+          descripcion: `Recomposición: ${nota}`,
+          sedeId:      tecnico.sedeId,
+        },
+      });
+
+      await tx.logActividad.create({
+        data: {
+          usuarioId:  req.usuario.id,
+          accion:     'RECOMPOSICION_INVENTARIO',
+          tabla:      'consumo_tecnico',
+          registroId: String(consumo.id),
+          detalles:   { tecnicoId, productoId, producto: asignacion.producto.nombre, disponibleAnterior: disponible, disponibleNuevo: deseada, ajuste, nota },
+          ip:         req.ip,
+        },
+      });
+
+      return { disponibleAnterior: disponible, disponibleNuevo: deseada, ajuste, producto: asignacion.producto.nombre };
+    });
+
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};
+
 const inventarioTecnico = async (req, res, next) => {
   try {
     const { tecnicoId } = req.params;
@@ -1947,6 +2026,7 @@ module.exports = {
   cancelarEnvio,
   statsControlador,
   inventarioTecnico,
+  recomponerInventario,
   auditoriaControlador,
   miInventario,
   registrarConsumo,

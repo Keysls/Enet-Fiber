@@ -9,6 +9,21 @@ const { TIPOS_AUTORIZAN_OLT } = require('../utils/tipoOrden');
 const TIPOS_QUE_AUTORIZAN_OLT = TIPOS_AUTORIZAN_OLT;
 // Contiene: INSTALACION_I/D, CAMBIO_EQUIPO_I/D, RECONEXION_I/D, TRASLADO_I/D
 
+// Si la orden se reasignó a otro técnico, el anterior no puede seguir escribiendo en ella
+// (p. ej. datos que tenía pendientes de sincronizar en su celular).
+async function exigirTecnicoAsignado(req, res, instalacionId) {
+  if (req.usuario.rol !== 'TECNICO') return true;
+  const inst = await prisma.instalacion.findUnique({
+    where:  { id: instalacionId },
+    select: { orden: { select: { tecnico: { select: { usuarioId: true } } } } },
+  });
+  if (inst && inst.orden.tecnico?.usuarioId !== req.usuario.id) {
+    res.status(403).json({ error: 'Esta orden ya no está asignada a ti' });
+    return false;
+  }
+  return true;
+}
+
 // Tipos de foto: FOTO_1..FOTO_8 o cualquier string libre (sin validación rígida)
 const MAX_FOTOS = 8;
 const MIN_FOTOS = 1;
@@ -258,6 +273,7 @@ const subirFotos = async (req, res, next) => {
 // ── POST /api/instalaciones/:instalacionId/equipo ─────────────
 const guardarEquipo = async (req, res, next) => {
   try {
+    if (!(await exigirTecnicoAsignado(req, res, req.params.instalacionId))) return;
     const { modeloOnu, marcaOnu, serieOnu } = req.body;
     const instalacion = await prisma.instalacion.update({
       where: { id: req.params.instalacionId },
@@ -270,6 +286,7 @@ const guardarEquipo = async (req, res, next) => {
 // ── POST /api/instalaciones/:instalacionId/config-onu ─────────
 const guardarConfigOnu = async (req, res, next) => {
   try {
+    if (!(await exigirTecnicoAsignado(req, res, req.params.instalacionId))) return;
     const {
       ssid, ssidPassword, ssid5ghz, ssidPassword5ghz,
       pppoeUser, pppoePassword,
@@ -344,6 +361,7 @@ const guardarConfigOnu = async (req, res, next) => {
 // ── POST /api/instalaciones/:instalacionId/sincronizar-offline ─
 const sincronizarOffline = async (req, res, next) => {
   try {
+    if (!(await exigirTecnicoAsignado(req, res, req.params.instalacionId))) return;
     const { configOnu, observaciones } = req.body;
     const resultado = await prisma.$transaction(async (tx) => {
       let config = null;
@@ -383,6 +401,7 @@ const sincronizarOffline = async (req, res, next) => {
 // ── POST /api/instalaciones/:instalacionId/completar ──────────
 const completar = async (req, res, next) => {
   try {
+    if (!(await exigirTecnicoAsignado(req, res, req.params.instalacionId))) return;
      const { observaciones, fechaFin } = req.body; 
 
     const instalacion = await prisma.instalacion.findUnique({

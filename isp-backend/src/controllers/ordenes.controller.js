@@ -690,6 +690,79 @@ const asignar = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── PATCH /api/ordenes/:id/cambiar-tecnico (ADMIN / SUPERADMIN) ─
+// tecnicoId = id de un técnico  → reasigna (queda ACEPTADA con el nuevo técnico)
+// tecnicoId = null              → libera la orden (vuelve a PENDIENTE_TECNICO, sin técnico)
+// Funciona en PENDIENTE_TECNICO, ACEPTADA y EN_PROCESO. La instalación (GPS, fotos,
+// configuración ONU) se conserva: el técnico nuevo continúa con lo ya registrado.
+const cambiarTecnico = async (req, res, next) => {
+  try {
+    const { tecnicoId = null } = req.body;
+    const motivo = String(req.body.motivo || '').trim();
+    if (motivo.length < 3)
+      return res.status(400).json({ error: 'Escribe el motivo del cambio' });
+
+    const orden = await prisma.ordenServicio.findUnique({
+      where:   { id: req.params.id },
+      include: { tecnico: { include: { usuario: { select: { nombre: true, apellido: true } } } } },
+    });
+    if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
+    if (req.usuario.rol === 'ADMIN' && orden.sedeId !== req.usuario.sedeId)
+      return res.status(403).json({ error: 'No tienes acceso a esta orden' });
+
+    if (!['PENDIENTE_TECNICO', 'ACEPTADA', 'EN_PROCESO'].includes(orden.estado))
+      return res.status(422).json({ error: `No se puede cambiar el técnico de una orden en estado ${orden.estado}` });
+    if (TIPOS_SOLO_NOC.includes(orden.tipoOrden))
+      return res.status(422).json({ error: 'Este tipo de orden no requiere técnico' });
+
+    let data;
+    let nuevoTecnico = null;
+    if (tecnicoId) {
+      nuevoTecnico = await prisma.tecnico.findUnique({
+        where:   { id: tecnicoId },
+        include: { usuario: { select: { nombre: true, apellido: true } } },
+      });
+      if (!nuevoTecnico || !nuevoTecnico.activo)
+        return res.status(404).json({ error: 'Técnico no encontrado o inactivo' });
+      if (nuevoTecnico.sedeId !== orden.sedeId)
+        return res.status(403).json({ error: 'El técnico no pertenece a la sede de esta orden' });
+      if (orden.tecnicoId === nuevoTecnico.id)
+        return res.status(422).json({ error: 'La orden ya está asignada a ese técnico' });
+
+      const ahora = new Date();
+      data = { tecnicoId: nuevoTecnico.id, estado: 'ACEPTADA', fechaAsignacion: ahora, fechaAceptacion: ahora, fechaInicio: null };
+    } else {
+      if (!orden.tecnicoId && orden.estado === 'PENDIENTE_TECNICO')
+        return res.status(422).json({ error: 'La orden ya está disponible para los técnicos' });
+      data = { tecnicoId: null, estado: 'PENDIENTE_TECNICO', fechaAsignacion: null, fechaAceptacion: null, fechaInicio: null };
+    }
+
+    const actualizada = await prisma.ordenServicio.update({
+      where: { id: orden.id },
+      data,
+      include: { tecnico: { include: { usuario: { select: { nombre: true, apellido: true, telefono: true } } } } },
+    });
+
+    const nombre = (t) => (t ? `${t.usuario.nombre} ${t.usuario.apellido}` : null);
+    await prisma.logActividad.create({
+      data: {
+        usuarioId:  req.usuario.id,
+        accion:     tecnicoId ? 'REASIGNAR_TECNICO_ORDEN' : 'LIBERAR_ORDEN',
+        tabla:      'ordenes_servicio',
+        registroId: orden.id,
+        detalles:   {
+          nServicio: orden.nServicio, motivo,
+          estadoAnterior: orden.estado, estadoNuevo: data.estado,
+          tecnicoAnterior: nombre(orden.tecnico), tecnicoNuevo: nombre(nuevoTecnico),
+        },
+        ip: req.ip,
+      },
+    });
+
+    res.json(actualizada);
+  } catch (err) { next(err); }
+};
+
 // ── PATCH /api/ordenes/:id/datos-wan (NOC) ────────────────────
 const ponerWan = async (req, res, next) => {
   try {
@@ -1382,7 +1455,7 @@ const papelera = async (req, res, next) => {
 
 module.exports = {
   listar, obtener, subirExcel, confirmarExcel, crear,
-  asignar, ponerWan, nocCompletar, aceptar, cambiarEstado,
+  asignar, cambiarTecnico, ponerWan, nocCompletar, aceptar, cambiarEstado,
   stats, actualizarDatos, historialWan, reportes, notificaciones,
   eliminar, restaurar, papelera, upsertContratoDesdeOrden,wanHeredableDelContrato,
   camposWanHeredada,

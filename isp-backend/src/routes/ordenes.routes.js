@@ -31,6 +31,9 @@ router.get('/:id', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA
 // ADMIN asigna técnico
 router.patch('/:id/asignar', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.asignar);
 
+// ADMIN cambia o libera el técnico de una orden (también si ya está en proceso)
+router.patch('/:id/cambiar-tecnico', requireRol('SUPERADMIN', 'ADMIN'), ctrl.cambiarTecnico);
+
 // NOC pone WAN
 router.patch('/:id/datos-wan', requireRol('SUPERADMIN', 'OPERADOR_NOC'), ctrl.ponerWan);
 

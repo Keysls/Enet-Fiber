@@ -22,6 +22,7 @@ router.post('/salida', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.s
 router.post('/salida-multiple', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.salidaStockMultiple);
 router.post('/salida-directa', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.salidaDirecta);
 router.post('/asignar-completo', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.asignarCompleto);
+router.post('/recomposicion', requireRol('SUPERADMIN', 'ADMIN'), ctrl.recomponerInventario);
 router.post('/enviar-sede', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN'), ctrl.enviarProductosSede);
 router.get('/envios/pendientes', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.listarEnviosPendientes);
 router.get('/envios/origen', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.listarEnviosOrigen);
