@@ -263,14 +263,27 @@ export default function OrdenesPage() {
   const navigate        = useNavigate();
   const [searchParams]  = useSearchParams();
   const isMobile        = useIsMobile();
-  const { tipoLabel, esSoloNoc: esSoloNocFn, grupos } = useTiposOrden();
+  const { tipoLabel, esSoloNoc: esSoloNocFn, grupos, labels } = useTiposOrden();
   const [showExcel, setShowExcel]           = useState(false);
   const [ordenDrawer, setOrdenDrawer]       = useState(null);
-  const [tab, setTab]                       = useState('todos');
-  const [filters, setFilters] = useState({ estado: searchParams.get('estado') || '', search: '', tecnicoId: '', fechaDesde: '', fechaHasta: '' });
-  const [page, setPage]                     = useState(1);
-  const [searchOpen, setSearchOpen]         = useState(false);
+  // Vista (pestaña, filtros, página) guardada para recuperarla al volver desde una orden.
+  // Si se llega con ?estado= (enlace del dashboard), ese enlace manda y no se restaura nada.
+  const [vistaInicial] = useState(() => {
+    if (searchParams.get('estado')) return null;
+    try { return JSON.parse(sessionStorage.getItem('ordenes-vista')) || null; } catch { return null; }
+  });
+  const [tab, setTab]                       = useState(vistaInicial?.tab || 'todos');
+  const [filters, setFilters] = useState({
+    estado: searchParams.get('estado') || '', search: '', tecnicoId: '', tipoOrden: '', fechaDesde: '', fechaHasta: '',
+    ...(vistaInicial?.filters || {}),
+  });
+  const [page, setPage]                     = useState(vistaInicial?.page || 1);
+  const [searchOpen, setSearchOpen]         = useState(!!vistaInicial?.filters?.search);
   const [spinning, setSpinning]             = useState(false);
+
+  useEffect(() => {
+    try { sessionStorage.setItem('ordenes-vista', JSON.stringify({ tab, filters, page })); } catch { /* sin storage */ }
+  }, [tab, filters, page]);
 
   useEffect(() => {
     const e = searchParams.get('estado');
@@ -334,11 +347,24 @@ export default function OrdenesPage() {
   });
   const tecnicos = tecnicosData || [];
 
+  // Tipos de orden (servicios) disponibles en el filtro según la pestaña activa
+  const codigosServicio = tab === 'internet' ? (grupos.INTERNET || [])
+    : tab === 'cable'    ? (grupos.CABLE    || [])
+    : tab === 'duo'      ? (grupos.DUO      || [])
+    : Object.keys(labels || {});
+
+  const cambiarTab = (nuevo) => {
+    setTab(nuevo);
+    setFilters(p => ({ ...p, tipoOrden: '' }));
+    setPage(1);
+  };
+
   const paramsFiltros = () => ({
     ...filters,
     ...(tab === 'internet' && { tipos: (grupos.INTERNET || []).join(',') }),
     ...(tab === 'cable'    && { tipos: (grupos.CABLE    || []).join(',') }),
     ...(tab === 'duo'      && { tipos: (grupos.DUO      || []).join(',') }),
+    ...(filters.tipoOrden  && { tipos: filters.tipoOrden }),
     ...(filters.tecnicoId  && { tecnicoId: filters.tecnicoId }),
     ...(filters.fechaDesde && { fechaDesde: filters.fechaDesde }),
     ...(filters.fechaHasta && { fechaHasta: filters.fechaHasta }),
@@ -433,7 +459,7 @@ export default function OrdenesPage() {
           { key: 'cable',    label: '📺 Cable' },
           { key: 'duo',      label: '📡📺 Dúo' },
         ].map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setPage(1); }}
+          <button key={t.key} onClick={() => cambiarTab(t.key)}
             style={{
               padding: '7px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600,
               cursor: 'pointer', border: '1px solid', transition: 'all .15s',
@@ -451,7 +477,7 @@ export default function OrdenesPage() {
       <select
         className="ordenes-tabs-select"
         value={tab}
-        onChange={e => { setTab(e.target.value); setPage(1); }}
+        onChange={e => cambiarTab(e.target.value)}
         style={{ padding: '9px 12px', marginBottom: 14, background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--txt)', fontSize: 13, fontWeight: 600, outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
       >
         <option value="todos">Todos</option>
@@ -502,6 +528,18 @@ export default function OrdenesPage() {
             style={{ padding: '7px 10px', background: 'var(--bg-3)', border: `1px solid ${filters.estado ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 8, color: filters.estado ? 'var(--accent)' : 'var(--txt-2)', fontSize: 12, fontWeight: filters.estado ? 600 : 400, outline: 'none', cursor: 'pointer', fontFamily: 'inherit', minWidth: 140 }}
           >
             {ESTADOS_FILTRO.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+          </select>
+
+          {/* Select servicio (tipo de orden) */}
+          <select
+            value={filters.tipoOrden}
+            onChange={e => { setFilters(p => ({ ...p, tipoOrden: e.target.value })); setPage(1); }}
+            style={{ padding: '7px 10px', background: 'var(--bg-3)', border: `1px solid ${filters.tipoOrden ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 8, color: filters.tipoOrden ? 'var(--accent)' : 'var(--txt-2)', fontSize: 12, fontWeight: filters.tipoOrden ? 600 : 400, outline: 'none', cursor: 'pointer', fontFamily: 'inherit', minWidth: 160 }}
+          >
+            <option value="">Todos los servicios</option>
+            {codigosServicio.map(c => (
+              <option key={c} value={c}>{tipoLabel(c)}</option>
+            ))}
           </select>
 
           {/* Select técnico */}

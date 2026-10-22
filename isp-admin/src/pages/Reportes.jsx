@@ -137,6 +137,8 @@ export default function ReportesPage() {
         'IP WAN':             o.ipWan      || '',
         'Máscara':            o.mascara    || '',
         'Gateway':            o.gateway    || '',
+        'Usuario PPPoE':      o.usaPppoe ? (o.pppoeUser     || '') : '',
+        'Contraseña PPPoE':   o.usaPppoe ? (o.pppoePassword || '') : '',
         'Fecha Servicio':     fmtFecha(o.fechaServicio),
         'Fecha Creación':     fmtFechaHora(o.createdAt),
         'Fecha Aceptación':   o.fechaAceptacion ? fmtFechaHora(o.fechaAceptacion) : '',

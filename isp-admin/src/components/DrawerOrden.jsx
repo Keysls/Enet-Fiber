@@ -151,6 +151,15 @@ export default function DrawerOrden({ ordenId, onCerrar }) {
               </Seccion>
 
               {/* ── WAN / NOC ── */}
+              {orden.usaPppoe && orden.pppoeUser && (
+                <Seccion titulo="WAN — NOC">
+                  <FilaDato label="Modo" value="PPPoE"/>
+                  <FilaDato label="Usuario" value={orden.pppoeUser} mono
+                    onCopy={() => copiar(orden.pppoeUser, 'Usuario copiado')}/>
+                  <FilaDato label="Contraseña" value={orden.pppoePassword || '—'} mono
+                    onCopy={orden.pppoePassword ? () => copiar(orden.pppoePassword, 'Contraseña copiada') : null} last/>
+                </Seccion>
+              )}
               {orden.ipWan && (
                 <Seccion titulo="WAN — NOC">
                   <FilaDato label="IP WAN"  value={orden.ipWan}  mono
@@ -310,10 +319,19 @@ export default function DrawerOrden({ ordenId, onCerrar }) {
                       lineas.push(`IP: ${orden.ipWan}`);
                     }
 
+                    if (orden.usaPppoe && orden.pppoeUser) {
+                      lineas.push(`PPPOE: ${orden.pppoeUser} / ${orden.pppoePassword || ''}`);
+                    }
+
                     const sn = orden.instalacion?.configOnu?.serialNumber;
                       if (sn) {
                         lineas.push(`SERIE PON: ${sn}`);
                       }
+
+                    const obsTecnico = orden.instalacion?.observaciones?.trim();
+                    if (obsTecnico) {
+                      lineas.push(`OBSERVACIÓN: ${obsTecnico.replace(/\s*\n\s*/g, ' ')}`);
+                    }
 
                       const precinto = orden.precinto || orden.contratoRef?.precinto;
                       if (precinto) {

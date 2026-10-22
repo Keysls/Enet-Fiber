@@ -234,7 +234,14 @@ export default function OrdenDetalle() {
           {tieneInternet && (
             <Card>
               <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 700, color: 'var(--txt-3)', marginBottom: 10, letterSpacing: '0.06em' }}>WAN — NOC</h3>
-              {orden.ipWan ? (
+              {orden.usaPppoe ? (
+                <>
+                  <InfoFila label="Modo"       value="PPPoE" />
+                  <InfoFila label="Usuario"    value={orden.pppoeUser} />
+                  <InfoFila label="Contraseña" value={orden.pppoePassword} />
+                  <div style={{ marginTop: 8, fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>✓ WAN lista para el técnico</div>
+                </>
+              ) : orden.ipWan ? (
                 <>
                   <InfoFila label="IP WAN"  value={orden.ipWan} />
                   <InfoFila label="Máscara" value={orden.mascara} />
@@ -415,7 +422,11 @@ export default function OrdenDetalle() {
             {tieneInternet && (
               <FichaSeccion
                 titulo="WAN"
-                campos={[
+                campos={orden.usaPppoe ? [
+                  ['Modo',              'PPPoE'],
+                  ['Usuario PPPoE',     orden.pppoeUser],
+                  ['Contraseña PPPoE',  orden.pppoePassword],
+                ] : [
                   ['IP WAN',  orden.ipWan],
                   ['Máscara', orden.mascara],
                   ['Gateway', orden.gateway],
