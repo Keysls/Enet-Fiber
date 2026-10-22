@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Phone, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ordenesApi, tecnicosApi, BACKEND_URL } from '../services/api';
-import { Card, EstadoBadge, Btn, Select, Spinner, Modal, Avatar, TimerBadge } from '../components/ui';
+import { Card, EstadoBadge, Btn, Select, Spinner, Modal, Avatar, TimerBadge, Input } from '../components/ui';
+import { useAuthStore } from '../store/auth.store';
 import { fmtFecha, fmtFechaHora, fmtMinutos, TIPO_COLOR, waLink } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
 
@@ -113,6 +114,23 @@ export default function OrdenDetalle() {
     onSuccess:  () => { toast.success('Estado actualizado'); qc.invalidateQueries(['orden', id]); qc.invalidateQueries(['stats']); },
   });
 
+  // ── Cambiar / liberar técnico (ADMIN y SUPERADMIN) ──
+  const usuario = useAuthStore(s => s.usuario);
+  const [showCambio, setShowCambio] = useState(false);
+  const [destino, setDestino]       = useState('');
+  const [motivo, setMotivo]         = useState('');
+  const cambioMut = useMutation({
+    mutationFn: () => ordenesApi.cambiarTecnico(id, { tecnicoId: destino === '__LIBERAR__' ? null : destino, motivo: motivo.trim() }),
+    onSuccess: () => {
+      toast.success(destino === '__LIBERAR__' ? 'Orden liberada: vuelve a estar disponible' : 'Técnico cambiado');
+      qc.invalidateQueries(['orden', id]);
+      qc.invalidateQueries(['ordenes']);
+      qc.invalidateQueries(['stats']);
+      setShowCambio(false);
+    },
+    onError: e => toast.error(e.response?.data?.error || 'No se pudo cambiar el técnico'),
+  });
+
   if (isLoading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
       <Spinner size={28} />
@@ -125,6 +143,11 @@ export default function OrdenDetalle() {
   const tieneInternet = esInternet || esDuo;
   const inst       = orden.instalacion;
   const enCurso    = orden.estado === 'ACEPTADA' || orden.estado === 'EN_PROCESO';
+  const puedeCambiarTecnico = ['ADMIN', 'SUPERADMIN'].includes(usuario?.rol)
+    && ['PENDIENTE_TECNICO', 'ACEPTADA', 'EN_PROCESO'].includes(orden.estado)
+    && !esDeGrupo(orden.tipoOrden, 'SOLO_NOC');
+  const tecnicosDestino = (tecnicos || []).filter(t => t.id !== orden.tecnicoId && (!t.sedeId || t.sedeId === orden.sedeId));
+  const abrirCambio = () => { setDestino(''); setMotivo(''); setShowCambio(true); };
 
   return (
     <div style={{ padding: 'clamp(16px, 4vw, 28px)', maxWidth: 1000, margin: '0 auto' }} className="animate-fade">
@@ -281,6 +304,13 @@ export default function OrdenDetalle() {
                 🕓 Esperando que un técnico tome esta orden
               </div>
             )}
+            {puedeCambiarTecnico && (
+              <div style={{ marginTop: 12 }}>
+                <Btn variant="ghost" size="sm" onClick={abrirCambio} style={{ width: '100%' }}>
+                  {orden.tecnico ? 'Cambiar técnico' : 'Asignar técnico'}
+                </Btn>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -386,6 +416,40 @@ export default function OrdenDetalle() {
           </Card>
         )}
       </div>
+
+      {/* Modal cambiar / liberar técnico */}
+      <Modal open={showCambio} onClose={() => setShowCambio(false)} title={`${orden.tecnico ? 'Cambiar técnico' : 'Asignar técnico'} — Orden #${orden.nServicio}`} width={480}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {orden.tecnico && (
+            <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>
+              Técnico actual: <b>{orden.tecnico.usuario.nombre} {orden.tecnico.usuario.apellido}</b> · Estado: <b>{orden.estado.replace(/_/g, ' ')}</b>
+            </div>
+          )}
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', marginBottom: 5, letterSpacing: '0.04em' }}>NUEVO TÉCNICO</label>
+            <select value={destino} onChange={e => setDestino(e.target.value)}
+              style={{ width: '100%', padding: '9px 10px', background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--txt)', fontSize: 13, outline: 'none', fontFamily: 'inherit' }}>
+              <option value="">Selecciona…</option>
+              {orden.tecnico && <option value="__LIBERAR__">↩ Liberar: que vuelva a estar disponible para cualquier técnico</option>}
+              {tecnicosDestino.map(t => (
+                <option key={t.id} value={t.id}>{t.usuario.nombre} {t.usuario.apellido}</option>
+              ))}
+            </select>
+          </div>
+          {orden.estado === 'EN_PROCESO' && (
+            <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px' }}>
+              Esta orden ya está en proceso. Quien la tome continuará con lo ya registrado (GPS, fotos y configuración de la ONU). El técnico anterior ya no podrá guardar cambios en ella, y los materiales que haya registrado siguen a su nombre.
+            </div>
+          )}
+          <Input label="Motivo *" value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ej: el técnico la aceptó por error / pidió cambio" />
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <Btn variant="ghost" onClick={() => setShowCambio(false)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={() => cambioMut.mutate()} loading={cambioMut.isPending} disabled={!destino || motivo.trim().length < 3}>
+              {destino === '__LIBERAR__' ? 'Liberar orden' : 'Confirmar cambio'}
+            </Btn>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal ficha completa */}
       {inst && (

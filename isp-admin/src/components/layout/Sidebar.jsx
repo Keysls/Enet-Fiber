@@ -1,5 +1,7 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { stockApi } from '../../services/api';
 import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 
@@ -127,6 +129,15 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   const usuario = useAuthStore(s => s.usuario);
   const esAdmin = usuario?.rol === 'ADMIN';
 
+  // Misma queryKey que la página de Devoluciones: comparten caché y se refresca al aprobar/rechazar
+  const { data: devolucionesPendientes } = useQuery({
+    queryKey: ['devoluciones', 'pendiente'],
+    queryFn:  () => stockApi.listarDevoluciones({ estado: 'pendiente' }).then(r => r.data),
+    enabled:  esAdmin,
+    refetchInterval: 60000,
+  });
+  const badges = { '/almacen/devoluciones': Array.isArray(devolucionesPendientes) ? devolucionesPendientes.length : 0 };
+
   const isActive = (to) =>
     to === '/' || to === '/almacen'
       ? loc.pathname === to
@@ -187,7 +198,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
             <>
               {!colapsado ? <div style={S.sectionLabel}>Almacén</div> : <div style={S.sectionDivider} />}
               {NAV_ALMACEN.map(({ to, label, icon: Icon }) => (
-                <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
+                <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} badge={badges[to]} {...navItemProps} />
               ))}
             </>
           )}
@@ -218,9 +229,15 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   );
 }
 
-function NavItem({ to, label, Icon, active, colapsado, esMovil, onCerrar }) {
-  const activeStyle   = { ...S.itemBase, ...S.itemActive,   justifyContent: colapsado ? 'center' : 'flex-start' };
-  const inactiveStyle = { ...S.itemBase, ...S.itemInactive, justifyContent: colapsado ? 'center' : 'flex-start' };
+function NavItem({ to, label, Icon, active, badge, colapsado, esMovil, onCerrar }) {
+  const activeStyle   = { ...S.itemBase, ...S.itemActive,   justifyContent: colapsado ? 'center' : 'flex-start', position: 'relative' };
+  const inactiveStyle = { ...S.itemBase, ...S.itemInactive, justifyContent: colapsado ? 'center' : 'flex-start', position: 'relative' };
+  const textoBadge = badge > 99 ? '99+' : String(badge);
+  const pastilla = {
+    background: '#EF4444', color: '#FFFFFF', fontSize: 10, fontWeight: 700,
+    minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+  };
 
   return (
     <NavLink
@@ -242,7 +259,15 @@ function NavItem({ to, label, Icon, active, colapsado, esMovil, onCerrar }) {
       }}
     >
       <Icon size={17} style={{ flexShrink: 0 }} />
-      {!colapsado && <span>{label}</span>}
+      {!colapsado && <span style={{ flex: 1 }}>{label}</span>}
+      {badge > 0 && (
+        <span
+          title={`${badge} pendiente${badge !== 1 ? 's' : ''}`}
+          style={colapsado ? { ...pastilla, position: 'absolute', top: 2, right: 4, minWidth: 16, height: 16, fontSize: 9 } : pastilla}
+        >
+          {textoBadge}
+        </span>
+      )}
     </NavLink>
   );
 }

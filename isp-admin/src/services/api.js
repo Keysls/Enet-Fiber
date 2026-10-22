@@ -119,6 +119,7 @@ export const ordenesApi = {
   confirmarExcel: (data)   => api.post('/ordenes/confirmar-excel', data),
   crear:          (data)   => api.post('/ordenes', data),
   asignar:        (id, tecnicoId) => api.patch(`/ordenes/${id}/asignar`, { tecnicoId }),
+  cambiarTecnico: (id, data)      => api.patch(`/ordenes/${id}/cambiar-tecnico`, data),
   cambiarEstado:  (id, estado)    => api.patch(`/ordenes/${id}/estado`, { estado }),
 };
 
@@ -187,6 +188,7 @@ export const productosApi = {
  
 export const stockApi = {
   inventarioTecnico: (tecnicoId) => api.get(`/stock/tecnico/${tecnicoId}`),
+  recomponer:        (data)      => api.post('/stock/recomposicion', data),
   listar:                 (params)         => api.get('/stock', { params }),
   stats:                  (params)         => api.get('/stock/stats', { params }),
   auditoria:              (params)         => api.get('/stock/auditoria', { params }),

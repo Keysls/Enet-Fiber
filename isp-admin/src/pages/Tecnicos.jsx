@@ -786,6 +786,130 @@ function ModalCrear({ open, onClose }) {
   );
 }
 
+// ── Modal Recomponer inventario (solo ADMIN / SUPERADMIN) ─────
+function ModalRecomponer({ open, onClose, tecnicos }) {
+  const qc = useQueryClient();
+  const [tecnicoId,  setTecnicoId]  = useState('');
+  const [productoId, setProductoId] = useState('');
+  const [descontar,  setDescontar]  = useState('');
+  const [nota,       setNota]       = useState('');
+
+  React.useEffect(() => {
+    if (open) { setTecnicoId(''); setProductoId(''); setDescontar(''); setNota(''); }
+  }, [open]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['inventario-tecnico', tecnicoId],
+    queryFn:  () => stockApi.inventarioTecnico(tecnicoId).then(r => r.data),
+    enabled:  open && !!tecnicoId,
+  });
+
+  // Materiales por cantidad/metros (las ONUs con código PON se manejan aparte)
+  const materiales = (data?.asignaciones || [])
+    .filter(a => !(data?.onus || []).some(o => o.productoId === a.productoId))
+    .map(a => ({ ...a, disponible: Number(a.cantidad) - Number(a.gastadoTotal || 0) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const material = materiales.find(m => String(m.productoId) === String(productoId));
+  const n        = Number(descontar);
+  const nValido  = descontar !== '' && Number.isInteger(n) && n !== 0;
+  const quedara  = material && nValido ? material.disponible - n : null;
+  const excede   = quedara !== null && (quedara < 0 || quedara > Number(material.cantidad));
+  const unidad   = material?.unidad || 'und';
+  const puedeGuardar = !!tecnicoId && !!material && nValido && !excede && nota.trim().length >= 3;
+
+  const mut = useMutation({
+    mutationFn: () => stockApi.recomponer({ tecnicoId, productoId: Number(productoId), descontar: n, nota: nota.trim() }),
+    onSuccess: (res) => {
+      const r = res.data;
+      toast.success(`${r.producto}: ${r.disponibleAnterior} → ${r.disponibleNuevo} ${unidad}`);
+      qc.invalidateQueries(['inventario-tecnico', tecnicoId]);
+      qc.invalidateQueries(['tecnicos']);
+      onClose();
+    },
+    onError: e => toast.error(e.response?.data?.error || 'Error al recomponer'),
+  });
+
+  const selectStyle = {
+    width: '100%', padding: '9px 10px', background: 'var(--bg-3)', border: '1px solid var(--border-2)',
+    borderRadius: 8, color: 'var(--txt)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
+  };
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', marginBottom: 5, letterSpacing: '0.04em' };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Recomponer inventario" width={500}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <label style={labelStyle}>TÉCNICO</label>
+          <select value={tecnicoId} onChange={e => { setTecnicoId(e.target.value); setProductoId(''); setDescontar(''); }} style={selectStyle}>
+            <option value="">Selecciona un técnico…</option>
+            {(tecnicos || []).map(t => (
+              <option key={t.id} value={t.id}>{t.usuario.nombre} {t.usuario.apellido}</option>
+            ))}
+          </select>
+        </div>
+
+        {tecnicoId && (
+          <div>
+            <label style={labelStyle}>MATERIAL</label>
+            {isLoading ? (
+              <div style={{ padding: 8 }}><Spinner size={18}/></div>
+            ) : materiales.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>Este técnico no tiene materiales por cantidad asignados.</div>
+            ) : (
+              <select value={productoId} onChange={e => { setProductoId(e.target.value); setDescontar(''); }} style={selectStyle}>
+                <option value="">Selecciona un material…</option>
+                {materiales.map(m => (
+                  <option key={m.productoId} value={m.productoId}>
+                    {m.nombre} — tiene {m.disponible} {m.unidad || 'und'}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {material && (
+          <>
+            <div style={{ padding: '10px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--txt-2)' }}>
+              Asignado: <b>{material.cantidad} {unidad}</b> · Gastado: <b>{material.gastadoTotal || 0}</b> · Disponible: <b>{material.disponible} {unidad}</b>
+            </div>
+
+            <Input
+              label={`CANTIDAD A DESCONTAR (${unidad})`}
+              type="number"
+              value={descontar}
+              onChange={e => setDescontar(e.target.value)}
+              placeholder="Ej: 300  (negativo para devolver)"
+              error={excede ? (quedara < 0 ? `Solo tiene ${material.disponible} ${unidad}` : `Superaría lo asignado (${material.cantidad} ${unidad})`) : undefined}
+            />
+
+            {quedara !== null && !excede && (
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                Le quedarán {quedara} {unidad} (antes {material.disponible})
+              </div>
+            )}
+
+            <Input
+              label="NOTA / MOTIVO *"
+              value={nota}
+              onChange={e => setNota(e.target.value)}
+              placeholder="Ej: consumo no registrado en órdenes de la semana"
+            />
+          </>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn variant="primary" onClick={() => mut.mutate()} loading={mut.isPending} disabled={!puedeGuardar}>
+            Recomponer
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Modal Editar ──────────────────────────────────────────────
 function ModalEditar({ open, onClose, tecnico }) {
   const qc = useQueryClient();
@@ -884,6 +1008,7 @@ export default function TecnicosPage() {
   const qc      = useQueryClient();
   const usuario = useAuthStore(s => s.usuario);
   const [showCrear,       setShowCrear]       = useState(false);
+  const [showRecomponer,  setShowRecomponer]  = useState(false);
   const [tecnicoEditar,   setTecnicoEditar]   = useState(null);
   const [tecnicoPass,     setTecnicoPass]     = useState(null);
   const [tecnicoInventario, setTecnicoInventario] = useState(null);
@@ -915,9 +1040,16 @@ export default function TecnicosPage() {
             {tecnicos?.length || 0} técnico{tecnicos?.length !== 1 ? 's' : ''} en {usuario?.sede?.nombre || 'tu sede'}
           </p>
         </div>
-        <Btn variant="primary" size="sm" icon={<UserPlus size={13}/>} onClick={() => setShowCrear(true)}>
-          Nuevo técnico
-        </Btn>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {['ADMIN', 'SUPERADMIN'].includes(usuario?.rol) && (
+            <Btn variant="ghost" size="sm" icon={<Package size={13}/>} onClick={() => setShowRecomponer(true)}>
+              Recomponer
+            </Btn>
+          )}
+          <Btn variant="primary" size="sm" icon={<UserPlus size={13}/>} onClick={() => setShowCrear(true)}>
+            Nuevo técnico
+          </Btn>
+        </div>
       </div>
 
       {isLoading ? (
@@ -1017,6 +1149,7 @@ export default function TecnicosPage() {
       )}
 
       <ModalCrear       open={showCrear}             onClose={() => setShowCrear(false)} />
+      <ModalRecomponer  open={showRecomponer}        onClose={() => setShowRecomponer(false)} tecnicos={tecnicos} />
       <ModalEditar      open={!!tecnicoEditar}        onClose={() => setTecnicoEditar(null)}    tecnico={tecnicoEditar} />
       <ModalPassword    open={!!tecnicoPass}          onClose={() => setTecnicoPass(null)}       tecnico={tecnicoPass} />
     </div>

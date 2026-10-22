@@ -5,6 +5,28 @@ import { Check, FileDown, Mail, MessageCircle, MoreHorizontal, Package, Plus, Se
 import { onusApi, productosApi, stockApi, tecnicosApi, sedesApi } from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 import { Card, Spinner, Btn, Input, Select, Badge, Modal as UIModal } from '../../components/ui';
+import { descargarRequerimientoExcel } from '../../utils/requerimientoExcel';
+
+const ASUNTO_REQUERIMIENTO_DEFECTO = 'Abastecimiento de almacén para los servicios técnicos';
+const LEMA_DEFECTO = 'AÑO DE LA ESPERANZA Y EL FORTALECIMIENTO DE LA DEMOCRACIA';
+const LEMA_STORAGE_KEY = 'requerimiento-lema';
+const lemaGuardado = () => {
+  try {
+    const v = localStorage.getItem(LEMA_STORAGE_KEY);
+    return v === null ? LEMA_DEFECTO : v;
+  } catch { return LEMA_DEFECTO; }
+};
+const guardarLema = (valor) => { try { localStorage.setItem(LEMA_STORAGE_KEY, valor); } catch { /* sin storage */ } };
+const requerimientoInicial = () => {
+  const hoy = new Date();
+  return {
+    items: [], nota: '',
+    numero: `${String(hoy.getMonth() + 1).padStart(2, '0')}-${hoy.getFullYear()}`,
+    asunto: ASUNTO_REQUERIMIENTO_DEFECTO,
+    observacionFinal: '',
+    lema: lemaGuardado(),
+  };
+};
 
 function useDebounce(value, delay = 400) {
   const [debounced, setDebounced] = React.useState(value);
@@ -251,6 +273,11 @@ function ItemsListRequerimiento({ stock, items, setItems, productos = [] }) {
                 value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)}
               />
               <Btn variant="danger" size="sm" onClick={() => remove(idx)}><X size={15} /></Btn>
+              <input
+                style={{ gridColumn: '1 / -1', height: 32, border: '1px solid var(--border)', borderRadius: 8, padding: '0 8px', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 12 }}
+                type="text" placeholder="Observación del ítem para el Excel (opcional, ej: ROLLOS, DE SUMA URGENCIA)"
+                value={item.observacion || ''} onChange={e => update(idx, 'observacion', e.target.value)}
+              />
             </div>
           );
         })}
@@ -389,7 +416,7 @@ export default function AdminAlmacenInventario() {
   const [directaSearch,    setDirectaSearch]    = useState('');
   const [envio,      setEnvio]      = useState({ sede_destino_id: '', guia: '', comentario: '', items: [], fecha: hoy });
   const [envioSearch, setEnvioSearch] = useState('');
-  const [requerimiento, setRequerimiento] = useState({ items: [], nota: '' });
+  const [requerimiento, setRequerimiento] = useState(requerimientoInicial);
   const [requerimientoSearch, setRequerimientoSearch] = useState('');
 
   const stockQ = useQuery({
@@ -600,6 +627,35 @@ export default function AdminAlmacenInventario() {
     toast.success('Mensaje de WhatsApp abierto');
   };
 
+  const [descargandoReq, setDescargandoReq] = useState(false);
+  const usuarioActual = useAuthStore(s => s.usuario);
+  const descargarRequerimientoXlsx = async () => {
+    const validos = requerimiento.items.filter(i => i.producto_id && Number(i.cantidad) > 0);
+    if (validos.length === 0) return;
+    const items = validos.map(i => {
+      const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
+      const prodCat = productos.find(p => String(p.id) === String(i.producto_id));
+      return { descripcion: prod?.producto || prodCat?.nombre || 'Producto', cantidad: Number(i.cantidad), observacion: i.observacion };
+    });
+    setDescargandoReq(true);
+    try {
+      const guardado = await descargarRequerimientoExcel({
+        items,
+        asunto: requerimiento.asunto,
+        observacionFinal: requerimiento.observacionFinal,
+        numero: requerimiento.numero,
+        lema: requerimiento.lema,
+        sede: sedeNombre.replace(/^sede\s+/i, ''),
+        de: `${usuarioActual?.nombre || ''} ${usuarioActual?.apellido || ''}`.trim(),
+      });
+      if (guardado) toast.success('Excel guardado');
+    } catch (e) {
+      toast.error(e.message || 'No se pudo generar el Excel');
+    } finally {
+      setDescargandoReq(false);
+    }
+  };
+
   const rows       = stockQ.data || [];
   const productos  = productosQ.data || [];
   const stock      = stockQ.data || [];
@@ -705,7 +761,7 @@ export default function AdminAlmacenInventario() {
                     <Send size={15} /> Enviar a sede
                   </button>
                 )}
-                <button className="ainv-menu-item" onClick={() => { setMenuAbierto(false); setRequerimiento({ items: [], nota: '' }); setRequerimientoSearch(''); setModal('requerimiento'); }}>
+                <button className="ainv-menu-item" onClick={() => { setMenuAbierto(false); setRequerimiento(requerimientoInicial()); setRequerimientoSearch(''); setModal('requerimiento'); }}>
                   <WhatsAppIcon size={15} color="#128C7E" /> Solicitar requerimiento
                 </button>
                 <button className="ainv-menu-item" onClick={() => { setMenuAbierto(false); setModal('reingresar-onu'); }}>
@@ -1169,7 +1225,22 @@ export default function AdminAlmacenInventario() {
             <ItemsListRequerimiento stock={stock} productos={productos} items={requerimiento.items} setItems={items => setRequerimiento({ ...requerimiento, items })} />
             <Input label="Nota (opcional)" value={requerimiento.nota} onChange={e => setRequerimiento({ ...requerimiento, nota: e.target.value })} placeholder="Ej: urgente, para instalaciones de esta semana..." />
 
+            <div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Datos para el Excel</div>
+              <Input label="Lema del año (se recuerda para los próximos; vacío = sin lema)" value={requerimiento.lema}
+                onChange={e => { guardarLema(e.target.value); setRequerimiento({ ...requerimiento, lema: e.target.value }); }}
+                placeholder="Ej: AÑO DE ..." />
+              <Input label="N° de requerimiento" value={requerimiento.numero} onChange={e => setRequerimiento({ ...requerimiento, numero: e.target.value })} placeholder="Ej: 10-2026" />
+              <Input label="Asunto" value={requerimiento.asunto} onChange={e => setRequerimiento({ ...requerimiento, asunto: e.target.value })} placeholder="Ej: Abastecimiento de almacén para..." />
+              <Input label="Observación final (opcional)" value={requerimiento.observacionFinal} onChange={e => setRequerimiento({ ...requerimiento, observacionFinal: e.target.value })} placeholder="Aparece al pie, antes de la firma" />
+            </div>
+
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Btn onClick={descargarRequerimientoXlsx}
+                disabled={requerimiento.items.filter(i => i.producto_id && Number(i.cantidad) > 0).length === 0 || descargandoReq}
+                icon={<FileDown size={15} />} style={{ flexBasis: '100%', background: '#217346', color: '#fff', border: 'none' }}>
+                {descargandoReq ? 'Generando...' : 'Descargar Excel'}
+              </Btn>
               <Btn onClick={enviarRequerimientoWhatsapp}
                 disabled={requerimiento.items.filter(i => i.producto_id && Number(i.cantidad) > 0).length === 0}
                 icon={<WhatsAppIcon size={15} color="#fff" />} style={{ flex: 1, minWidth: 160, background: '#25D366', color: '#fff', border: 'none' }}>
