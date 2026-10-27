@@ -55,6 +55,70 @@ function ModalCrearSede({ open, onClose }) {
   );
 }
 
+// Desplegable con casillas: sedes a las que esta sede apoya con sus técnicos.
+// La lista se abre dentro del formulario (no flotante) para que el modal no la
+// recorte, y sin altura fija porque el panel oculta las barras de scroll.
+function SelectorSedesApoyo({ sede, sedes, seleccion, onChange }) {
+  const [abierto, setAbierto] = useState(false);
+  const [buscar, setBuscar]   = useState('');
+
+  // No se ofrece la propia sede ni las que ya apoyan a esta (el apoyo es en un solo sentido)
+  const opciones   = sedes.filter(s => s.id !== sede.id && !(s.apoyaASedes || []).some(a => a.id === sede.id));
+  const filtradas  = opciones.filter(s => s.nombre.toLowerCase().includes(buscar.trim().toLowerCase()));
+  const elegidas   = opciones.filter(s => seleccion.includes(s.id));
+  const toggle     = (id) => onChange(seleccion.includes(id) ? seleccion.filter(x => x !== id) : [...seleccion, id]);
+  const etiqueta   = { fontSize: 11, color: 'var(--txt-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={etiqueta}>Sus técnicos también atienden a</label>
+
+      <button type="button" onClick={() => setAbierto(a => !a)} disabled={opciones.length === 0}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          width: '100%', padding: '8px 12px', textAlign: 'left',
+          background: 'var(--bg-3)', border: `1px solid ${abierto ? 'var(--accent)' : 'var(--border-2)'}`,
+          borderRadius: 6, color: elegidas.length ? 'var(--txt)' : 'var(--txt-3)', fontSize: 13,
+          cursor: opciones.length ? 'pointer' : 'not-allowed',
+        }}>
+        <span className="truncate">
+          {opciones.length === 0 ? 'No hay otras sedes disponibles'
+            : elegidas.length === 0 ? 'Ninguna sede'
+            : elegidas.map(s => s.nombre).join(', ')}
+        </span>
+        {abierto ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+      </button>
+
+      {abierto && (
+        <div style={{ border: '1px solid var(--border-2)', borderRadius: 6, background: 'var(--bg-3)', padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {opciones.length > 6 && (
+            <input autoFocus placeholder="Buscar sede..." value={buscar} onChange={e => setBuscar(e.target.value)}
+              style={{ width: '100%', padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--border-2)', borderRadius: 6, color: 'var(--txt)', fontSize: 12, outline: 'none' }} />
+          )}
+          {filtradas.length === 0 && <div style={{ fontSize: 12, color: 'var(--txt-3)', padding: '2px 4px' }}>Sin resultados</div>}
+          {filtradas.map(s => (
+            <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 4px', fontSize: 13, color: 'var(--txt)', cursor: 'pointer', borderRadius: 4 }}>
+              <input type="checkbox" checked={seleccion.includes(s.id)} onChange={() => toggle(s.id)} />
+              {s.nombre}
+              {!s.activo && <span style={{ fontSize: 10, color: 'var(--txt-3)' }}>(inactiva)</span>}
+            </label>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--txt-3)' }}>{elegidas.length} de {opciones.length} seleccionadas</span>
+            <Btn variant="ghost" size="sm" onClick={() => { setAbierto(false); setBuscar(''); }}>Listo</Btn>
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>
+        {elegidas.length > 0
+          ? 'Los técnicos y el admin de esta sede ven, toman y sincronizan las órdenes de esas sedes. Esas sedes no ven las de esta.'
+          : 'Los técnicos de esta sede solo atienden las órdenes de esta sede.'}
+      </div>
+    </div>
+  );
+}
+
 function ModalEditarSede({ open, onClose, sede, sedes = [] }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ nombre: '', ciudad: '', puedeEnviarStock: false, correoReceptor: '', correoEmisor: '', correoEmisorPass: '', apoyaASedes: [] });
@@ -122,37 +186,12 @@ function ModalEditarSede({ open, onClose, sede, sedes = [] }) {
         </div>
 
         {/* Apoyo con técnicos a otras sedes (en un solo sentido) */}
-        {(() => {
-          // No se ofrece la propia sede ni las que ya apoyan a esta
-          const opciones = sedes.filter(s => s.id !== sede.id && !(s.apoyaASedes || []).some(a => a.id === sede.id));
-          const toggle = (id) => set('apoyaASedes', form.apoyaASedes.includes(id)
-            ? form.apoyaASedes.filter(x => x !== id)
-            : [...form.apoyaASedes, id]);
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, color: 'var(--txt-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Sus técnicos también atienden a
-              </label>
-              {opciones.length === 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>No hay otras sedes disponibles.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto', padding: 8, border: '1px solid var(--border-2)', borderRadius: 6, background: 'var(--bg-3)' }}>
-                  {opciones.map(s => (
-                    <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--txt)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={form.apoyaASedes.includes(s.id)} onChange={() => toggle(s.id)} />
-                      {s.nombre}
-                    </label>
-                  ))}
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>
-                {form.apoyaASedes.length > 0
-                  ? 'Los técnicos y el admin de esta sede ven, toman y sincronizan las órdenes de las sedes marcadas. Esas sedes no ven las de esta.'
-                  : 'Los técnicos de esta sede solo atienden las órdenes de esta sede.'}
-              </div>
-            </div>
-          );
-        })()}
+        <SelectorSedesApoyo
+          sede={sede}
+          sedes={sedes}
+          seleccion={form.apoyaASedes}
+          onChange={ids => set('apoyaASedes', ids)}
+        />
 
         {/* Correo emisor (SMTP propio de la sede) */}
         <Input
