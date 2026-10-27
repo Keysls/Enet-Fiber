@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Upload, Search, RefreshCw, X, Database, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ordenesApi, tecnicosApi, siscadreApi } from '../services/api';
+import { ordenesApi, tecnicosApi, siscadreApi, sedesApi } from '../services/api';
 import { Card, EstadoBadge, Table, Tr, Td, Btn, Modal, Input, Select, Spinner, Empty, TimerBadge } from '../components/ui';
 import { fmtFecha, fmtFechaHora, TIPO_COLOR, ESTADO_CONFIG } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
@@ -56,7 +56,16 @@ function InjectStyles() {
 }
 
 // ── Tarjeta de orden para vista móvil ────────────────────────
-function OrdenCard({ o, onNavigate, tipoLabel }) {
+// Etiqueta para las órdenes de la sede que se apoya (no son de la sede del usuario)
+function SedeBadge({ nombre }) {
+  return (
+    <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: 'rgba(124,58,237,0.08)', color: '#7C3AED', border: '1px solid rgba(124,58,237,0.22)', whiteSpace: 'nowrap' }}>
+      {nombre}
+    </span>
+  );
+}
+
+function OrdenCard({ o, onNavigate, tipoLabel, otraSede }) {
   return (
     <div
       style={{
@@ -75,7 +84,7 @@ function OrdenCard({ o, onNavigate, tipoLabel }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
-            #{o.nServicio}
+            #{o.nServicio} {otraSede && <SedeBadge nombre={o.sede?.nombre} />}
           </span>
           <EstadoBadge estado={o.estado} />
         </div>
@@ -274,7 +283,7 @@ export default function OrdenesPage() {
   });
   const [tab, setTab]                       = useState(vistaInicial?.tab || 'todos');
   const [filters, setFilters] = useState({
-    estado: searchParams.get('estado') || '', search: '', tecnicoId: '', tipoOrden: '', fechaDesde: '', fechaHasta: '',
+    estado: searchParams.get('estado') || '', search: '', tecnicoId: '', tipoOrden: '', fechaDesde: '', fechaHasta: '', sedeId: '',
     ...(vistaInicial?.filters || {}),
   });
   const [page, setPage]                     = useState(vistaInicial?.page || 1);
@@ -310,16 +319,21 @@ export default function OrdenesPage() {
   const sincronizarMut = useMutation({
     mutationFn: () => siscadreApi.sincronizar(usuario.sedeId),
     onSuccess: (res) => {
-      const { nuevas, existentes, total, porConexion = [] } = res.data;
+      const { nuevas, existentes, total, porConexion = [], porSede = [] } = res.data;
+      const variasSedes = porSede.length > 1;
       // Antes esto siempre mostraba éxito, aunque la conexión hubiera
       // fallado por completo (0 nuevas, 0 existentes, 0 total) — ahora
       // se revisa si alguna conexión de la sede reportó un error real.
       const conexionesConError = porConexion.filter(c => c.errorConexion);
       if (conexionesConError.length > 0) {
-        conexionesConError.forEach(c => toast.error(`${c.tipoServicio}: ${c.errorConexion}`));
+        conexionesConError.forEach(c => toast.error(`${variasSedes ? `${c.sedeNombre} · ` : ''}${c.tipoServicio}: ${c.errorConexion}`));
       }
       if (nuevas > 0 || existentes > 0 || conexionesConError.length === 0) {
-        toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)`);
+        // Con sede apoyada (ej. Naranjillo), detallar cuántas entraron de cada una
+        const detalle = variasSedes
+          ? '\n' + porSede.map(s => `${s.sedeNombre}: ${s.nuevas} nuevas`).join('\n')
+          : '';
+        toast.success(`Sincronizado: ${nuevas} nuevas, ${existentes} ya existían (${total} total)${detalle}`);
       }
       qc.invalidateQueries(['ordenes']);
       qc.invalidateQueries(['siscadre-conexiones']);
@@ -346,6 +360,14 @@ export default function OrdenesPage() {
     queryFn:  () => tecnicosApi.listar({ activo: true }).then(r => r.data),
   });
   const tecnicos = tecnicosData || [];
+
+  // Si la sede apoya a otras (ej. Nueva Cajamarca → Naranjillo), también ve sus órdenes
+  const { data: misSedesData } = useQuery({
+    queryKey: ['sedes'],
+    queryFn:  () => sedesApi.listar().then(r => r.data),
+  });
+  const miSede        = (misSedesData || []).find(s => s.id === usuario?.sedeId);
+  const sedesApoyadas = miSede?.apoyaASedes || [];
 
   // Tipos de orden (servicios) disponibles en el filtro según la pestaña activa
   const codigosServicio = tab === 'internet' ? (grupos.INTERNET || [])
@@ -556,6 +578,19 @@ export default function OrdenesPage() {
             ))}
           </select>
 
+          {/* Select sede — solo si esta sede apoya a otras */}
+          {sedesApoyadas.length > 0 && (
+            <select
+              value={filters.sedeId}
+              onChange={e => { setFilters(p => ({ ...p, sedeId: e.target.value })); setPage(1); }}
+              style={{ padding: '7px 10px', background: 'var(--bg-3)', border: `1px solid ${filters.sedeId ? 'var(--accent)' : 'var(--border-2)'}`, borderRadius: 8, color: filters.sedeId ? 'var(--accent)' : 'var(--txt-2)', fontSize: 12, fontWeight: filters.sedeId ? 600 : 400, outline: 'none', cursor: 'pointer', fontFamily: 'inherit', minWidth: 150 }}
+            >
+              <option value="">Todas las sedes</option>
+              <option value={usuario.sedeId}>{miSede.nombre}</option>
+              {sedesApoyadas.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          )}
+
           {filters.estado === 'COMPLETADA' && (
             <div style={{ display: 'flex', gap: 10, width: isMobile ? '100%' : 'auto' }}>
               <input
@@ -589,8 +624,8 @@ export default function OrdenesPage() {
             </div>
           )}
 
-          {(filters.estado || filters.search || filters.tecnicoId || filters.fechaDesde || filters.fechaHasta) && (
-            <Btn variant="ghost" size="sm" onClick={() => { setFilters({ estado: '', search: '', tecnicoId: '', fechaDesde: '', fechaHasta: '' }); setPage(1); }} icon={<X size={12} />}>Limpiar</Btn>
+          {(filters.estado || filters.search || filters.tecnicoId || filters.fechaDesde || filters.fechaHasta || filters.sedeId) && (
+            <Btn variant="ghost" size="sm" onClick={() => { setFilters({ estado: '', search: '', tecnicoId: '', fechaDesde: '', fechaHasta: '', sedeId: '' }); setPage(1); }} icon={<X size={12} />}>Limpiar</Btn>
           )}
         </div>
       </Card>
@@ -608,6 +643,7 @@ export default function OrdenesPage() {
                 <OrdenCard key={o.id} o={o}
                   onNavigate={id => setOrdenDrawer(id)}
                   tipoLabel={tipoLabel}
+                  otraSede={o.sedeId !== usuario?.sedeId}
                 />
               ))
             )}
@@ -624,6 +660,7 @@ export default function OrdenesPage() {
                 <Tr key={o.id} onClick={() => setOrdenDrawer(o.id)}>
                   <Td>
                     <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, color: 'var(--accent)' }}>#{o.nServicio}</span>
+                    {o.sedeId !== usuario?.sedeId && <div style={{ marginTop: 3 }}><SedeBadge nombre={o.sede?.nombre} /></div>}
                   </Td>
                   <Td>
                     <div style={{ fontWeight: 500 }}>{o.abonado}</div>

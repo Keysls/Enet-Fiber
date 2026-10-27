@@ -3,6 +3,7 @@ const mysql  = require('mysql2/promise');
 const { encrypt, decrypt } = require('./siscadre/encryption');
 const { upsertContratoDesdeOrden, wanHeredableDelContrato, camposWanHeredada } = require('./ordenes.controller');
 const { TIPOS_NOC_TECNICO } = require('../utils/tipoOrden');
+const { sedesQueAtiende } = require('../utils/sedeApoyo');
 
 
 // Mismos tipos que ordenes.controller.js — que el NOC completa manualmente sin técnico
@@ -446,7 +447,9 @@ async function sincronizarConexion(conexion, sedeId) {
 }
 
 // ── POST /api/siscadre/:sedeId/sync ───────────────────────────
-// Sincroniza TODAS las conexiones activas de la sede
+// Sincroniza TODAS las conexiones activas de la sede y, si apoya a otra
+// (ej. Nueva Cajamarca → Naranjillo), también las de esa sede. Cada orden
+// queda en la sede dueña de la conexión, así que no se duplica nada.
 const sincronizar = async (req, res, next) => {
   try {
     const { sedeId } = req.params;
@@ -455,17 +458,22 @@ const sincronizar = async (req, res, next) => {
       return res.status(403).json({ error: 'No tienes acceso a esta sede' });
     }
 
+    const sedes = await sedesQueAtiende(sedeId);
     const conexiones = await prisma.siscadreConexion.findMany({
-      where: { sedeId, activo: true },
+      where:   { sedeId: { in: sedes }, activo: true },
+      include: { sede: { select: { nombre: true } } },
     });
+    // Primero las de la propia sede
+    conexiones.sort((a, b) => (a.sedeId === sedeId ? 0 : 1) - (b.sedeId === sedeId ? 0 : 1));
 
-    if (conexiones.length === 0) {
+    if (!conexiones.some(c => c.sedeId === sedeId)) {
       return res.status(400).json({ error: 'Esta sede no tiene ninguna conexión Siscadre configurada' });
     }
 
     const resultados = [];
     for (const conexion of conexiones) {
-      resultados.push(await sincronizarConexion(conexion, sedeId));
+      const r = await sincronizarConexion(conexion, conexion.sedeId);
+      resultados.push({ ...r, sedeId: conexion.sedeId, sedeNombre: conexion.sede.nombre });
     }
 
     const totales = resultados.reduce((acc, r) => ({
@@ -475,7 +483,15 @@ const sincronizar = async (req, res, next) => {
       errores:    acc.errores    + r.errores,
     }), { total: 0, nuevas: 0, existentes: 0, errores: 0 });
 
-    res.json({ ok: true, ...totales, syncAt: new Date(), porConexion: resultados });
+    // Totales por sede, para avisar cuántas entraron de cada una
+    const porSede = [];
+    for (const r of resultados) {
+      let s = porSede.find(x => x.sedeId === r.sedeId);
+      if (!s) porSede.push(s = { sedeId: r.sedeId, sedeNombre: r.sedeNombre, total: 0, nuevas: 0, existentes: 0, errores: 0 });
+      s.total += r.total; s.nuevas += r.nuevas; s.existentes += r.existentes; s.errores += r.errores;
+    }
+
+    res.json({ ok: true, ...totales, syncAt: new Date(), porConexion: resultados, porSede });
 
   } catch (err) { next(err); }
 };

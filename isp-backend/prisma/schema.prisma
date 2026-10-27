@@ -20,6 +20,10 @@ model Sede {
   correoReceptor     String?             @map("correo_receptor")
   correoEmisor       String?             @map("correo_emisor")
   correoEmisorPass   String?             @map("correo_emisor_pass")
+  // Sedes a las que esta sede apoya con sus técnicos (ej. Nueva Cajamarca → Naranjillo)
+  // y sedes que apoyan a esta. Ver SedeApoyo.
+  apoyaA             SedeApoyo[]         @relation("SedeQueApoya")
+  apoyadaPor         SedeApoyo[]         @relation("SedeApoyada")
   activos            Activo[]
   asignaciones       AsignacionTecnico[]
   contratos          Contrato[]
@@ -44,6 +48,21 @@ model Sede {
   siscadreConexiones SiscadreConexion[]
 
   @@map("sedes")
+}
+
+// Una sede apoya a otra con sus técnicos (ej. Nueva Cajamarca → Naranjillo).
+// Los técnicos y el admin de `sede` ven, toman y sincronizan las órdenes de
+// `sedeApoyada`; no al revés. Una sede puede apoyar a varias.
+model SedeApoyo {
+  sedeId         String   @map("sede_id")
+  sedeApoyadaId  String   @map("sede_apoyada_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  sede           Sede     @relation("SedeQueApoya", fields: [sedeId], references: [id], onDelete: Cascade)
+  sedeApoyada    Sede     @relation("SedeApoyada", fields: [sedeApoyadaId], references: [id], onDelete: Cascade)
+
+  @@id([sedeId, sedeApoyadaId])
+  @@index([sedeApoyadaId])
+  @@map("sedes_apoyo")
 }
 
 model Usuario {

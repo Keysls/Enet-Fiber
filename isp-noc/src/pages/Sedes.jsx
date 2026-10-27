@@ -55,9 +55,9 @@ function ModalCrearSede({ open, onClose }) {
   );
 }
 
-function ModalEditarSede({ open, onClose, sede }) {
+function ModalEditarSede({ open, onClose, sede, sedes = [] }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState({ nombre: '', ciudad: '', puedeEnviarStock: false, correoReceptor: '', correoEmisor: '', correoEmisorPass: '' });
+  const [form, setForm] = useState({ nombre: '', ciudad: '', puedeEnviarStock: false, correoReceptor: '', correoEmisor: '', correoEmisorPass: '', apoyaASedes: [] });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   React.useEffect(() => {
@@ -68,6 +68,7 @@ function ModalEditarSede({ open, onClose, sede }) {
       correoReceptor:  sede.correoReceptor  || '',
       correoEmisor:    sede.correoEmisor    || '',
       correoEmisorPass: '',
+      apoyaASedes:     (sede.apoyaASedes || []).map(s => s.id),
     });
   }, [sede]);
 
@@ -119,6 +120,39 @@ function ModalEditarSede({ open, onClose, sede }) {
             }}/>
           </button>
         </div>
+
+        {/* Apoyo con técnicos a otras sedes (en un solo sentido) */}
+        {(() => {
+          // No se ofrece la propia sede ni las que ya apoyan a esta
+          const opciones = sedes.filter(s => s.id !== sede.id && !(s.apoyaASedes || []).some(a => a.id === sede.id));
+          const toggle = (id) => set('apoyaASedes', form.apoyaASedes.includes(id)
+            ? form.apoyaASedes.filter(x => x !== id)
+            : [...form.apoyaASedes, id]);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, color: 'var(--txt-3)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Sus técnicos también atienden a
+              </label>
+              {opciones.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>No hay otras sedes disponibles.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto', padding: 8, border: '1px solid var(--border-2)', borderRadius: 6, background: 'var(--bg-3)' }}>
+                  {opciones.map(s => (
+                    <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--txt)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.apoyaASedes.includes(s.id)} onChange={() => toggle(s.id)} />
+                      {s.nombre}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>
+                {form.apoyaASedes.length > 0
+                  ? 'Los técnicos y el admin de esta sede ven, toman y sincronizan las órdenes de las sedes marcadas. Esas sedes no ven las de esta.'
+                  : 'Los técnicos de esta sede solo atienden las órdenes de esta sede.'}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Correo emisor (SMTP propio de la sede) */}
         <Input
@@ -800,6 +834,11 @@ function SedeRow({ sede, onEditar, onSiscadre }) {
                 <Send size={10}/> Envía stock
               </span>
             )}
+            {sede.apoyaASedes?.length > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: 'rgba(124,58,237,0.08)', color: '#7C3AED', border: '1px solid rgba(124,58,237,0.22)' }}>
+                <Users size={10}/> Apoya a {sede.apoyaASedes.map(s => s.nombre).join(', ')}
+              </span>
+            )}
             <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: sede.activo ? 'rgba(22,163,74,0.08)' : 'rgba(100,116,139,0.1)', color: sede.activo ? '#16A34A' : '#64748B', border: `1px solid ${sede.activo ? 'rgba(22,163,74,0.2)' : 'rgba(100,116,139,0.2)'}` }}>
               {sede.activo ? 'Activa' : 'Inactiva'}
             </span>
@@ -904,7 +943,7 @@ export default function SedesPage() {
       )}
 
       <ModalCrearSede  open={showCrear}    onClose={() => setShowCrear(false)} />
-      <ModalEditarSede open={!!sedeEditar} onClose={() => setSedeEditar(null)} sede={sedeEditar} />
+      <ModalEditarSede open={!!sedeEditar} onClose={() => setSedeEditar(null)} sede={sedeEditar} sedes={sedes || []} />
       <DrawerSiscadre sedeId={siscadre?.id} sedeNombre={siscadre?.nombre}onCerrar={() => setSiscadre(null)} />
     </div>
   );

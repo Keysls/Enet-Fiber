@@ -10,6 +10,7 @@ const {
   TIPOS_NOC_TECNICO, TIPOS_SOLO_NOC,
   TIPO_LABEL,
 } = require('../utils/tipoOrden');
+const { sedesQueAtiende, filtroSedes, puedeAtender } = require('../utils/sedeApoyo');
 
 // Tipos que el NOC PUEDE completar opcionalmente (sin técnico)
 const TIPOS_NOC_OPCIONAL = ['RECONEXION_I', 'RECONEXION_D'];
@@ -177,7 +178,8 @@ const listar = async (req, res, next) => {
     // DESPUÉS:
       if (rol === 'TECNICO') {
         where = {
-          sedeId: miSede,
+          // Su sede y, si apoya a otra (ej. Nueva Cajamarca → Naranjillo), también esa
+          sedeId: await filtroSedes(miSede),
           OR: [
             // Sus propias órdenes (ya tomadas por él, en cualquier estado del flujo)
             {
@@ -210,9 +212,10 @@ const listar = async (req, res, next) => {
         }),
       };
     } else if (rol === 'ADMIN' || rol === 'SECRETARIA') {
-      // Panel Admin: solo su sede
+      // Panel Admin: su sede y la que apoya (filtrable a una sola con ?sedeId=)
+      const misSedes = await sedesQueAtiende(miSede);
       where = {
-        sedeId: miSede,
+        sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede,
         ...(estado    && { estado }),
         ...(tecnicoId && { tecnicoId }),
         ...(tipos     && { tipoOrden: { in: tipos.split(',') } }),
@@ -357,8 +360,8 @@ const obtener = async (req, res, next) => {
     });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    // ADMIN solo puede ver órdenes de su sede
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && orden.sedeId !== req.usuario.sedeId)
+    // ADMIN solo puede ver órdenes de su sede o de la que apoya
+    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     // Consumos de materiales registrados para esta orden
@@ -633,8 +636,8 @@ const asignar = async (req, res, next) => {
     const ordenActual = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!ordenActual) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    // ADMIN solo puede asignar órdenes de su sede
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && ordenActual.sedeId !== req.usuario.sedeId)
+    // ADMIN solo puede asignar órdenes de su sede o de la que apoya
+    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, ordenActual.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (TIPOS_SOLO_NOC.includes(ordenActual.tipoOrden))
@@ -643,8 +646,8 @@ const asignar = async (req, res, next) => {
     const tecnico = await prisma.tecnico.findUnique({ where: { id: tecnicoId }, include: { usuario: true } });
     if (!tecnico || !tecnico.activo) return res.status(404).json({ error: 'Técnico no encontrado' });
 
-    // El técnico debe ser de la misma sede que la orden
-    if (tecnico.usuario.sedeId !== ordenActual.sedeId)
+    // El técnico debe ser de la sede de la orden o de una sede que la apoya
+    if (!(await puedeAtender(tecnico.usuario.sedeId, ordenActual.sedeId)))
       return res.status(403).json({ error: 'El técnico no pertenece a la sede de esta orden' });
 
     // ¿El contrato ya tiene WAN? Ahora que hay técnico, la orden puede heredarla.
@@ -707,7 +710,7 @@ const cambiarTecnico = async (req, res, next) => {
       include: { tecnico: { include: { usuario: { select: { nombre: true, apellido: true } } } } },
     });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
-    if (req.usuario.rol === 'ADMIN' && orden.sedeId !== req.usuario.sedeId)
+    if (req.usuario.rol === 'ADMIN' && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (!['PENDIENTE_TECNICO', 'ACEPTADA', 'EN_PROCESO'].includes(orden.estado))
@@ -724,7 +727,7 @@ const cambiarTecnico = async (req, res, next) => {
       });
       if (!nuevoTecnico || !nuevoTecnico.activo)
         return res.status(404).json({ error: 'Técnico no encontrado o inactivo' });
-      if (nuevoTecnico.sedeId !== orden.sedeId)
+      if (!(await puedeAtender(nuevoTecnico.sedeId, orden.sedeId)))
         return res.status(403).json({ error: 'El técnico no pertenece a la sede de esta orden' });
       if (orden.tecnicoId === nuevoTecnico.id)
         return res.status(422).json({ error: 'La orden ya está asignada a ese técnico' });
@@ -892,12 +895,12 @@ const aceptar = async (req, res, next) => {
     const orden = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    // El técnico debe ser de la misma sede que la orden
+    // El técnico debe ser de la sede de la orden o de una sede que la apoya
     const usuarioTecnico = await prisma.usuario.findUnique({
       where: { id: req.usuario.id },
       select: { sedeId: true },
     });
-    if (usuarioTecnico?.sedeId !== orden.sedeId)
+    if (!(await puedeAtender(usuarioTecnico?.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'Esta orden no pertenece a tu sede' });
 
     if (orden.estado !== 'PENDIENTE_TECNICO')
@@ -944,8 +947,8 @@ const cambiarEstado = async (req, res, next) => {
     const orden = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    // ADMIN solo puede tocar órdenes de su sede
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && orden.sedeId !== req.usuario.sedeId)
+    // ADMIN solo puede tocar órdenes de su sede o de la que apoya
+    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     // Si no cambia el estado, no hacer nada
@@ -1006,7 +1009,7 @@ const stats = async (req, res, next) => {
         ...(sedeId && { sedeId }),
       };
     } else if (rol === 'ADMIN' || rol === 'SECRETARIA') {
-      filtro = { sedeId: miSede };
+      filtro = { sedeId: await filtroSedes(miSede) };
     }
 
     // Estados que cuentan como "pendiente" (todo lo que no está cerrado)
@@ -1081,7 +1084,7 @@ const actualizarDatos = async (req, res, next) => {
     const orden = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && orden.sedeId !== req.usuario.sedeId)
+    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (!['PENDIENTE_NOC', 'PENDIENTE_TECNICO'].includes(orden.estado))
@@ -1147,9 +1150,18 @@ const reportes = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta } = req.query;
 
-    // ADMIN solo ve su sede; SUPERADMIN/OPERADOR_NOC ven todo
+    // ADMIN ve su sede y, de la sede que apoya, solo lo que atendieron sus técnicos
+    // (lo reportan como trabajo propio). SUPERADMIN/OPERADOR_NOC ven todo.
+    const esAdmin  = ['ADMIN','SECRETARIA'].includes(req.usuario.rol);
+    const apoyadas = esAdmin ? (await sedesQueAtiende(req.usuario.sedeId)).filter(id => id !== req.usuario.sedeId) : [];
     const whereSede = {
-      ...(['ADMIN','SECRETARIA'].includes(req.usuario.rol) && { sedeId: req.usuario.sedeId }),
+      ...(esAdmin && apoyadas.length === 0 && { sedeId: req.usuario.sedeId }),
+      ...(esAdmin && apoyadas.length > 0 && {
+        OR: [
+          { sedeId: req.usuario.sedeId },
+          { sedeId: { in: apoyadas }, tecnico: { usuario: { sedeId: req.usuario.sedeId } } },
+        ],
+      }),
       ...((fechaDesde || fechaHasta) && {
         createdAt: {
           ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
@@ -1378,9 +1390,10 @@ const exportarCsv = async (req, res, next) => {
         }),
       };
     } else {
-      // ADMIN / SECRETARIA: solo su sede
+      // ADMIN / SECRETARIA: su sede y la que apoya (mismo filtro que listar)
+      const misSedes = await sedesQueAtiende(miSede);
       where = {
-        sedeId: miSede,
+        sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede,
         ...(estado    && { estado }),
         ...(tecnicoId && { tecnicoId }),
         ...(tipos     && { tipoOrden: { in: tipos.split(',') } }),
