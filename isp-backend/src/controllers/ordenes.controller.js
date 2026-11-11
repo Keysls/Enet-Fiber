@@ -1,4 +1,5 @@
 const prisma  = require('../utils/prisma');
+const { inicioDiaPeru, finDiaPeru } = require('../utils/fechaPeru');
 const { parsearExcelOrdenes } = require('../services/excel.service');
 const multer  = require('multer');
 const path    = require('path');
@@ -227,8 +228,8 @@ const listar = async (req, res, next) => {
         }),
         ...((fechaDesde || fechaHasta) && {
           fechaFin: {
-            ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
-            ...(fechaHasta && { lte: new Date(fechaHasta + 'T23:59:59') }),
+            ...(fechaDesde && { gte: inicioDiaPeru(fechaDesde) }),
+            ...(fechaHasta && { lte: finDiaPeru(fechaHasta) }),
           },
         }),
       };
@@ -1164,8 +1165,8 @@ const reportes = async (req, res, next) => {
       }),
       ...((fechaDesde || fechaHasta) && {
         createdAt: {
-          ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
-          ...(fechaHasta && { lte: new Date(fechaHasta + 'T23:59:59') }),
+          ...(fechaDesde && { gte: inicioDiaPeru(fechaDesde) }),
+          ...(fechaHasta && { lte: finDiaPeru(fechaHasta) }),
         },
       }),
     };
@@ -1405,8 +1406,8 @@ const exportarCsv = async (req, res, next) => {
         }),
         ...((fechaDesde || fechaHasta) && {
           fechaFin: {
-            ...(fechaDesde && { gte: new Date(fechaDesde + 'T00:00:00') }),
-            ...(fechaHasta && { lte: new Date(fechaHasta + 'T23:59:59') }),
+            ...(fechaDesde && { gte: inicioDiaPeru(fechaDesde) }),
+            ...(fechaHasta && { lte: finDiaPeru(fechaHasta) }),
           },
         }),
       };

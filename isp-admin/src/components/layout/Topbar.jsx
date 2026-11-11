@@ -29,6 +29,7 @@ const TITULOS = {
   '/programar':           'Programar',
   '/almacen':             'Almacén · Dashboard',
   '/almacen/inventario':  'Almacén · Inventario',
+  '/almacen/equipo':      'Almacén · Buscar equipo',
   '/almacen/devoluciones': 'Almacén · Devoluciones',
   '/almacen/reportes':    'Almacén · Reportes',
   '/plantaexterna':       'Planta externa',

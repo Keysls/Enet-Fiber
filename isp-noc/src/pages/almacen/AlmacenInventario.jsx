@@ -9,6 +9,7 @@ import autoTable from 'jspdf-autotable';
 import { activosApi, productosApi, stockApi, onusInventarioApi } from '../../services/api';
 import { Btn, Badge, Input, Modal, Select, Table, Tr, Td } from '../../components/ui';
 import { useSedeSeleccionada } from './hooks';
+import { hoyLocal } from '../../utils/helpers';
 
 const CSS = `
   .inv-table-wrap   { display: block; }
@@ -796,7 +797,7 @@ export default function AlmacenInventario() {
   const [page,      setPage]      = useState(1);
   const [exportForm, setExportForm] = useState({ sede_id: '', categoria: 'todas', formato: 'excel' });
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyLocal();
   const [entrada, setEntrada] = useState({ items: [{ producto_id: '', cantidad: 1 }], comentario: '', fechaEntrada: '' }); 
  const [activoForm, setActivoForm] = useState({ sede_destino_id: '', area: 'NOC', descripcion: '', items: [{ producto_id: '', cantidad: 1 }] });
   const [envio, setEnvio] = useState({ sede_destino_id: '', guia: '', comentario: '', items: [], fechaEnvio: '' });

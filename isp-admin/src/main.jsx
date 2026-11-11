@@ -29,6 +29,7 @@ import PlantaExternaPage from './pages/PlantaExterna';
 import AdminAlmacenDashboard  from './pages/almacen/Dashboard';
 import AdminAlmacenInventario from './pages/almacen/Inventario';
 import AdminAlmacenReportes   from './pages/almacen/Reportes';
+import BuscarEquipoPage       from './pages/almacen/BuscarEquipo';
 import DevolucionesPage from './pages/Devoluciones';
  
 
@@ -64,6 +65,7 @@ function App() {
                 <Route path="/almacen"               element={<AdminAlmacenDashboard />} />
                 <Route path="/almacen/inventario"    element={<AdminAlmacenInventario />}/>
                 <Route path="/almacen/reportes"      element={<AdminAlmacenReportes />}  />
+                <Route path="/almacen/equipo"        element={<BuscarEquipoPage />} />
                 <Route path="/planes"                element={<PlanesPage />} />
                 <Route path="/almacen/devoluciones"  element={<DevolucionesPage />} />
                 <Route path="/planta-externa"        element={<PlantaExternaPage />} />

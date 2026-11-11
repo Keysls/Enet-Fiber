@@ -16,6 +16,7 @@ const TITULOS = {
   '/perfil':             'Mi Perfil',
   '/almacen':            'Almacén · Dashboard',
   '/almacen/inventario': 'Almacén · Inventario',
+  '/almacen/equipo':     'Almacén · Buscar equipo',
   '/almacen/catalogo':   'Almacén · Catálogo',
   '/almacen/reportes':   'Almacén · Reportes',
 };

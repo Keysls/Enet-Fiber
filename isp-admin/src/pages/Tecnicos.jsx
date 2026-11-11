@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/auth.store';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { hoyLocal } from '../utils/helpers';
 
 // ─── CSS responsivo ───────────────────────────────────────────
 const CSS = `
@@ -183,7 +184,7 @@ function PanelInventario({ tecnico, onClose }) {
     const ws1 = wb.Sheets['Stock actual'];
     ws1['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 16 }, { wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
 
-    XLSX.writeFile(wb, `inventario_${nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `inventario_${nombre.replace(/\s+/g, '_')}_${hoyLocal()}.xlsx`);
   }
 
   return (
@@ -514,7 +515,7 @@ function cargarImagenBase64(url) {
 // ── Modal: generar PDF de entrega de materiales ────────────────
 function ModalPdfEntrega({ open, onClose, nombre, sede, entregas }) {
   const admin = useAuthStore(s => s.usuario);
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = hoyLocal();
   const [fechaDesde, setFechaDesde] = useState(hoy);
   const [fechaHasta, setFechaHasta] = useState(hoy);
 
@@ -666,7 +667,7 @@ function ModalPdfEntrega({ open, onClose, nombre, sede, entregas }) {
     bloqueFirma(colIzqX, 'Administrador / Responsable de la entrega', nombreAdmin);
     bloqueFirma(colDerX, 'Técnico / Responsable de la recepción', nombre);
 
-    doc.save(`acta_entrega_${(nombre || 'tecnico').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`acta_entrega_${(nombre || 'tecnico').replace(/\s+/g, '_')}_${hoyLocal()}.pdf`);
     onClose();
   }
 

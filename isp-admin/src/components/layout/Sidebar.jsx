@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { stockApi } from '../../services/api';
-import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat, ScanSearch } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 
 const NAV_PRINCIPAL = [
@@ -17,6 +17,7 @@ const NAV_PRINCIPAL = [
 const NAV_ALMACEN = [
   { to: '/almacen',            label: 'Dashboard',  icon: LayoutDashboard },
   { to: '/almacen/inventario', label: 'Inventario', icon: Package         },
+  { to: '/almacen/equipo',     label: 'Buscar equipo', icon: ScanSearch  },
   { to: '/almacen/devoluciones', label: 'Devoluciones', icon: ArrowDownToLine },
   { to: '/almacen/reportes',   label: 'Reportes',   icon: BarChart2       },
 ];

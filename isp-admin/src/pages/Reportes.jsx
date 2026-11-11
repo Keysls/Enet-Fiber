@@ -7,6 +7,7 @@ import { ordenesApi } from '../services/api';
 import { Card, Spinner, Btn, Input } from '../components/ui';
 import { fmtFecha, fmtFechaHora, fmtMinutos, ESTADO_CONFIG } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
+import { hoyLocal } from '../utils/helpers';
 
 function StatBox({ label, value, color, icon: Icon }) {
   return (
@@ -194,7 +195,7 @@ export default function ReportesPage() {
       wsTipo['!cols'] = [{ wch: 32 }, { wch: 12 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, wsTipo, 'Distribución por Tipo');
 
-      const fecha = new Date().toISOString().split('T')[0];
+      const fecha = hoyLocal();
       const sufijoFecha = (fechaDesde || fechaHasta) ? `_${fechaDesde || 'inicio'}_a_${fechaHasta || fecha}` : '';
       XLSX.writeFile(wb, `EnetFiber_Servicios${sufijoFecha}_${fecha}.xlsx`);
       toast.success(`✓ ${all.length} registros exportados`, { id: toastId });

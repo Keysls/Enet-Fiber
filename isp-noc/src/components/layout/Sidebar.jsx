@@ -4,7 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   Activity, ClipboardList, Users, GitBranch,
   MapPin, Wifi, Contact, LayoutDashboard,
-  Package, BookOpen, BarChart2, LogOut, Shield, Settings,
+  Package, BookOpen, BarChart2, LogOut, Shield, Settings, ScanSearch,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../services/api';
@@ -186,6 +186,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   const NAV_ALMACEN = [
     { to: '/almacen',            label: 'Dashboard',  icon: LayoutDashboard },
     { to: '/almacen/inventario', label: 'Inventario', icon: Package         },
+    { to: '/almacen/equipo',     label: 'Buscar equipo', icon: ScanSearch  },
     { to: '/almacen/catalogo',   label: 'Catálogo',   icon: BookOpen        },
     { to: '/almacen/reportes',   label: 'Reportes',   icon: BarChart2       },
   ];

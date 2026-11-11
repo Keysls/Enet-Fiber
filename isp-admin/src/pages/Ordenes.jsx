@@ -9,6 +9,7 @@ import { fmtFecha, fmtFechaHora, TIPO_COLOR, ESTADO_CONFIG } from '../utils/help
 import { useTiposOrden } from '../hooks/useTiposOrden';
 import DrawerOrden from '../components/DrawerOrden';
 import { useAuthStore } from '../store/auth.store';
+import { hoyLocal } from '../utils/helpers';
 
 function useIsMobile(breakpoint = 1081) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
@@ -404,7 +405,7 @@ export default function OrdenesPage() {
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `ordenes_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `ordenes_${hoyLocal()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();

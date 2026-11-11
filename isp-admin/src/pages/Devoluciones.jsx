@@ -4,6 +4,7 @@ import { CheckCircle, XCircle, RefreshCw, Package, FileSpreadsheet, AlertTriangl
 import toast from 'react-hot-toast';
 import { stockApi } from '../services/api';
 import * as XLSX from 'xlsx';
+import { hoyLocal } from '../utils/helpers';
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmtFecha = (iso) => {
@@ -350,7 +351,7 @@ function TablaMalogrados() {
     ws['!cols'] = [{ wch: 12 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 20 }, { wch: 30 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Malogrados');
-    XLSX.writeFile(wb, `equipos_malogrados_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `equipos_malogrados_${hoyLocal()}.xlsx`);
     toast.success('Exportado a Excel');
   };
 
@@ -508,7 +509,7 @@ export default function DevolucionesPage() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Devoluciones');
-    XLSX.writeFile(wb, `devoluciones_${tabEstado}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `devoluciones_${tabEstado}_${hoyLocal()}.xlsx`);
     toast.success('Exportado a Excel');
   };
 

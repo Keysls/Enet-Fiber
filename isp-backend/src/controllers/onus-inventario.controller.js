@@ -1,4 +1,5 @@
 const prisma = require('../utils/prisma');
+const { anotarMovimiento } = require('../utils/onuMovimientos');
 
 const getSedeId = (req) => {
   if (req.usuario?.rol === 'ADMIN') return req.usuario.sedeId;
@@ -88,6 +89,7 @@ const crear = async (req, res, next) => {
       data: { productoId, sedeId, codigoPon },
       include: { producto: true },
     });
+    await anotarMovimiento(prisma, onu, { tipo: 'REGISTRO', sedeId, usuarioId: req.usuario?.id });
 
     res.status(201).json(mapOnu(onu));
   } catch (err) { next(err); }
@@ -115,6 +117,13 @@ const actualizarCodigo = async (req, res, next) => {
       data: { codigoPon },
       include: { producto: true },
     });
+    if (onu.codigoPon !== codigoPon) {
+      // Se anota con los dos códigos para que la búsqueda la encuentre por cualquiera
+      const datos = { tipo: 'CAMBIO_CODIGO', sedeId: onu.sedeId, usuarioId: req.usuario?.id,
+        detalle: onu.codigoPon ? `${onu.codigoPon} → ${codigoPon}` : `Código asignado: ${codigoPon}` };
+      await anotarMovimiento(prisma, actualizada, datos);
+      if (onu.codigoPon) await anotarMovimiento(prisma, onu, datos);
+    }
 
     res.json(mapOnu(actualizada));
   } catch (err) { next(err); }

@@ -1,4 +1,6 @@
 const prisma = require('../utils/prisma');
+const { anotarMovimiento } = require('../utils/onuMovimientos');
+const { inicioDiaPeru, finDiaPeru } = require('../utils/fechaPeru');
 
 // ── POST /api/stock/mi-devolucion ────────────────────────────
 // El tecnico registra una devolucion. Puede incluir:
@@ -714,8 +716,11 @@ const listarMalogrados = async (req, res, next) => {
     const where = {
       estado: 'malogrado',
       ...(rol === 'ADMIN' && { sedeId: miSede }),
-      ...(desde && { createdAt: { gte: new Date(desde) } }),
-      ...(hasta && { createdAt: { lte: new Date(hasta + 'T23:59:59') } }),
+      // Antes el "hasta" pisaba al "desde"; ahora van juntos y en hora de Perú
+      ...((desde || hasta) && { createdAt: {
+        ...(desde && { gte: inicioDiaPeru(desde) }),
+        ...(hasta && { lte: finDiaPeru(hasta) }),
+      } }),
     };
 
     const malogrados = await prisma.onuReciclada.findMany({
@@ -811,6 +816,11 @@ const reingresarOnuMalograda = async (req, res, next) => {
         await tx.onu.updateMany({
           where: { codigoPon: malogrado.codigoPon },
           data:  { salidaDirecta: false, tecnicoId: null, cliente: null, sedeId: malogrado.sedeId },
+        });
+        const onu = await tx.onu.findUnique({ where: { codigoPon: malogrado.codigoPon }, select: { id: true, codigoPon: true } });
+        await anotarMovimiento(tx, onu || { codigoPon: malogrado.codigoPon }, {
+          tipo: 'REINGRESO_MALOGRADA', sedeId: malogrado.sedeId, referencia: malogrado.id,
+          detalle: comentario || null, usuarioId: req.usuario?.id,
         });
       }
 

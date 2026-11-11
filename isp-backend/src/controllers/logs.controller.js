@@ -1,4 +1,5 @@
 const prisma = require('../utils/prisma');
+const { inicioDiaPeru, finDiaPeru, hoyPeru } = require('../utils/fechaPeru');
 
 // GET /api/logs — logs de actividad con filtros
 const listarLogs = async (req, res, next) => {
@@ -21,8 +22,8 @@ const listarLogs = async (req, res, next) => {
     if (ip)         where.ip         = { contains: ip };
     if (desde || hasta) {
       where.createdAt = {};
-      if (desde) where.createdAt.gte = new Date(desde);
-      if (hasta) where.createdAt.lte = new Date(hasta + 'T23:59:59');
+      if (desde) where.createdAt.gte = inicioDiaPeru(desde);
+      if (hasta) where.createdAt.lte = finDiaPeru(hasta);
     }
 
     // Scope por sede: SUPERADMIN ve todo, OPERADOR_NOC ve su sede
@@ -88,8 +89,7 @@ const statsLogs = async (req, res, next) => {
     const limit = Math.min(50, Number(req.query.limit) || 15);
     const skip  = (page - 1) * limit;
 
-    const hoy       = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const hoy       = inicioDiaPeru(hoyPeru());   // medianoche de Perú, no la del servidor
     const ayer      = new Date(hoy);
     ayer.setDate(ayer.getDate() - 1);
     const hace7dias = new Date(hoy);

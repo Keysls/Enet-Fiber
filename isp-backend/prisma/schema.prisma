@@ -606,6 +606,25 @@ model Onu {
   @@map("onus")
 }
 
+// Historial de movimientos de cada ONU (prisma/sql/20261106_onu_movimientos.sql).
+// Sin relaciones a propósito: el registro sobrevive aunque la ONU se borre o cambie de código.
+model OnuMovimiento {
+  id            Int      @id @default(autoincrement())
+  onuId         Int?     @map("onu_id")
+  codigoPon     String   @map("codigo_pon")
+  tipo          String   @db.VarChar(30)
+  sedeId        String?  @map("sede_id")
+  sedeDestinoId String?  @map("sede_destino_id")
+  referencia    String?  @db.VarChar(50)
+  detalle       String?
+  usuarioId     String?  @map("usuario_id")
+  fecha         DateTime @default(now())
+
+  @@index([onuId])
+  @@index([tipo, referencia])
+  @@map("onu_movimientos")
+}
+
 model Recojo {
   id             Int            @id @default(autoincrement())
   codigo         String?        @unique

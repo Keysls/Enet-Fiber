@@ -1,4 +1,6 @@
 const prisma = require('../utils/prisma');
+const { anotarMovimiento, anotarMovimientos, movimientosPorReferencia } = require('../utils/onuMovimientos');
+const { fechaDelPanel } = require('../utils/fechaPeru');
 const { notificacionRequerimiento, enviarCorreoConSede, baseTemplate } = require('../utils/mailer');
 const { decrypt } = require('./olt/encryption');
 const { verificarYAlertarStockBajo, notificarIngreso } = require('../utils/stockAlertas');
@@ -106,9 +108,7 @@ const entradaStock = async (req, res, next) => {
             registradoPor: req.usuario?.id ? String(req.usuario.id) : null,
             sedeId: String(sedeId),
             comentario: req.body.comentario || req.body.motivo || null,
-            fecha: req.body.fechaEntrada
-              ? new Date(req.body.fechaEntrada)
-              : new Date(),
+            fecha: fechaDelPanel(req.body.fechaEntrada) || new Date(),
           },
         });
         await tx.producto.update({ where: { id: productoId }, data: { stockTotal: { increment: cantidad } } });
@@ -360,8 +360,11 @@ const salidaDirecta = async (req, res, next) => {
         await tx.onu.update({ where: { id: onu.id }, data: { salidaDirecta: true } });
         await decrementStockSede(tx, { sedeId, productoId: onu.productoId, cantidad: 1 });
         await decrementProductoTotal(tx, { productoId: onu.productoId, cantidad: 1 });
-        await tx.salidaDirecta.create({
+        const salida = await tx.salidaDirecta.create({
           data: { productoId: onu.productoId, sedeId, cantidad: 1, comentario, registradoPor: String(req.usuario.id) },
+        });
+        await anotarMovimiento(tx, onu, {
+          tipo: 'SALIDA_DIRECTA', sedeId, referencia: salida.id, detalle: comentario, usuarioId: req.usuario.id,
         });
       }
     });
@@ -413,9 +416,7 @@ const enviarProductosSede = async (req, res, next) => {
           usuarioId: req.usuario.id,
           guia,
           comentario,
-          fechaEnvio: req.body.fechaEnvio 
-        ? new Date(req.body.fechaEnvio) 
-        : new Date(),
+          fechaEnvio: fechaDelPanel(req.body.fechaEnvio) || new Date(),
           estado: 'PENDIENTE',
         },
       });
@@ -436,6 +437,10 @@ const enviarProductosSede = async (req, res, next) => {
         await tx.onu.update({
           where: { id: onu.id },
           data: { sedeId: sedeDestinoId, cliente: `envio_pendiente#${envio.id}` },
+        });
+        await anotarMovimiento(tx, onu, {
+          tipo: 'ENVIO', sedeId: sedeOrigenId, sedeDestinoId, referencia: envio.id,
+          detalle: [`Guía ${guia}`, comentario].filter(Boolean).join(' · '), usuarioId: req.usuario.id,
         });
 
         // Decrementar stock en sede origen
@@ -583,6 +588,14 @@ const confirmarEnvio = async (req, res, next) => {
         });
       }
 
+      const onusRecibidas = await tx.onu.findMany({
+        where: { cliente: `envio_pendiente#${envioId}` }, select: { id: true, codigoPon: true },
+      });
+      await anotarMovimientos(tx, onusRecibidas, {
+        tipo: 'ENVIO_RECIBIDO', sedeId: envio.sedeOrigenId, sedeDestinoId: envio.sedeId, referencia: envioId,
+        detalle: `Guía ${envio.guia}`, usuarioId: req.usuario.id,
+      });
+
       // Limpiar la marca "en tránsito" de las ONUs — ya pertenecen a la sede destino
       await tx.onu.updateMany({
         where: { cliente: `envio_pendiente#${envioId}` },
@@ -646,6 +659,13 @@ const cancelarEnvio = async (req, res, next) => {
       // cliente = "envio_pendiente#<id>" al momento del envío.
       // Eso nos permite encontrar EXACTAMENTE cuáles ONUs pertenecen a este envío
       // sin riesgo de mover ONUs de otra sede o de otro producto.
+      const onusDevueltas = await tx.onu.findMany({
+        where: { cliente: `envio_pendiente#${envioId}` }, select: { id: true, codigoPon: true },
+      });
+      await anotarMovimientos(tx, onusDevueltas, {
+        tipo: 'ENVIO_CANCELADO', sedeId: envio.sedeOrigenId, sedeDestinoId: envio.sedeId, referencia: envioId,
+        detalle: `Guía ${envio.guia} · ${motivo}`, usuarioId: req.usuario.id,
+      });
       await tx.onu.updateMany({
         where: { cliente: `envio_pendiente#${envioId}` },
         data:  { sedeId: envio.sedeOrigenId, cliente: null },
@@ -886,6 +906,13 @@ const auditoriaControlador = async (req, res, next) => {
       }),
     ]);
 
+    // Código de la ONU de cada salida directa (desde que se anotan los movimientos)
+    const onusPorSalida = await movimientosPorReferencia('SALIDA_DIRECTA', salidas.map(s => s.id));
+    const itemSalida = (s) => {
+      const codigos = (onusPorSalida[String(s.id)] || []).map(m => m.codigoPon);
+      return codigos.length ? `${s.producto.nombre} — ${codigos.join(', ')}` : s.producto.nombre;
+    };
+
     // REEMPLAZA el bloque onusAsignadas y el map con:
     const rows = [
       ...entregas.map(e => ({
@@ -934,7 +961,7 @@ const auditoriaControlador = async (req, res, next) => {
       }))),
 
 
-      ...salidas.map(s => ({ id: s.id, fecha: s.fecha, tipo: 'salida_directa', item: s.producto.nombre, cantidad: s.cantidad, comentario: s.comentario, sede_nombre: sedeNombre(s.sedeId), sedeId: s.sedeId || null })),
+      ...salidas.map(s => ({ id: s.id, fecha: s.fecha, tipo: 'salida_directa', item: itemSalida(s), cantidad: s.cantidad, comentario: s.comentario, sede_nombre: sedeNombre(s.sedeId), sedeId: s.sedeId || null })),
       ...entradas.map(e => ({ id: e.id, fecha: e.fecha, tipo: 'entrada', item: e.producto.nombre, cantidad: e.cantidad, comentario: e.comentario, sede_nombre: sedeNombre(e.sedeId), sedeId: e.sedeId || null })),
       ...envios.flatMap(e => e.detalles.map(d => ({
         id: e.id,
@@ -1882,6 +1909,9 @@ const reingresarOnuSalidaDirecta = async (req, res, next) => {
       await tx.onu.update({
         where: { id: onuId },
         data: { salidaDirecta: false },
+      });
+      await anotarMovimiento(tx, onu, {
+        tipo: 'REINGRESO', sedeId: onu.sedeId, detalle: comentario || null, usuarioId: req.usuario?.id,
       });
 
       await tx.stockSede.upsert({

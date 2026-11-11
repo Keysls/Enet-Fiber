@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import { Check, FileDown, Mail, MessageCircle, MoreHorizontal, Package, Plus, Search, Send, TrendingDown, Wifi, X } from 'lucide-react';
 import { onusApi, productosApi, stockApi, tecnicosApi, sedesApi } from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
 import { Card, Spinner, Btn, Input, Select, Badge, Modal as UIModal } from '../../components/ui';
 import { descargarRequerimientoExcel } from '../../utils/requerimientoExcel';
+import { hoyLocal } from '../../utils/helpers';
 
 const ASUNTO_REQUERIMIENTO_DEFECTO = 'Abastecimiento de almacén para los servicios técnicos';
 const LEMA_DEFECTO = 'AÑO DE LA ESPERANZA Y EL FORTALECIMIENTO DE LA DEMOCRACIA';
@@ -363,7 +365,12 @@ function OnuEditRow({ onu, onSave, codigosExistentes = [] }) {
         </>
       ) : (
         <>
-          <span style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--txt)' }}>{onu.codigo_pon}</span>
+          <span style={{ flex: 1 }}>
+            <Link to={`/almacen/equipo?codigo=${encodeURIComponent(onu.codigo_pon)}`} title="Ver dónde está y su historial"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--txt)', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>
+              {onu.codigo_pon}
+            </Link>
+          </span>
           <span style={{ fontSize: 11, color: onu.salida_directa ? '#991B1B' : 'var(--txt-3)', background: onu.salida_directa ? '#FEE2E2' : 'var(--bg-3)', padding: '2px 8px', borderRadius: 6 }}>
             {onu.salida_directa ? 'Malogrado' : onu.tecnico_id ? (onu.tecnico || 'Técnico') : onu.cliente ? 'Instalada' : 'En sede'}
           </span>
@@ -405,7 +412,7 @@ export default function AdminAlmacenInventario() {
     };
   }, [menuAbierto]);
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyLocal();
 
   const [entrada,    setEntrada]    = useState({ comentario: '', items: [], fecha: hoy });
   const [asignacion, setAsignacion] = useState({ tecnico_id: '', comentario: '', items: [], onu_ids: [] });
@@ -678,7 +685,7 @@ export default function AdminAlmacenInventario() {
       ws['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 14 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
-      XLSX.writeFile(wb, `inventario_${sedeNombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
+      XLSX.writeFile(wb, `inventario_${sedeNombre.replace(/\s+/g, '_')}_${hoyLocal()}.xlsx`);
     });
   };
 

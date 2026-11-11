@@ -215,3 +215,6 @@ export const withSede = (params = {}, sedeId = '') => ({
   ...params,
   ...(sedeId && { sedeId }),
 });
+// Hoy como "yyyy-MM-dd" en la hora de la computadora (no en UTC: desde las 7 pm
+// de Perú, toISOString() ya devuelve el día siguiente)
+export const hoyLocal = () => format(new Date(), 'yyyy-MM-dd');

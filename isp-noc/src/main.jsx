@@ -23,6 +23,7 @@ import AlmacenDashboard    from './pages/almacen/AlmacenDashboard';
 import AlmacenInventario   from './pages/almacen/AlmacenInventario';
 import AlmacenCatalogo     from './pages/almacen/AlmacenCatalogo';
 import AlmacenReportes     from './pages/almacen/AlmacenReportes';
+import BuscarEquipoPage    from './pages/almacen/BuscarEquipo';
 import PerfilPage           from './pages/PerfilPage';
 import ResetPasswordPage    from './pages/ResetPassword';
 
@@ -65,6 +66,7 @@ function App() {
                 <Route path="/almacen/inventario" element={<AlmacenInventario />} />
                 <Route path="/almacen/catalogo"   element={<AlmacenCatalogo />}   />
                 <Route path="/almacen/reportes"   element={<AlmacenReportes />}   />
+                <Route path="/almacen/equipo"     element={<BuscarEquipoPage />}  />
 
                 {/* Solo SUPERADMIN */}
                 <Route path="/sedes"    element={<SuperAdminRoute><SedesPage /></SuperAdminRoute>}    />
