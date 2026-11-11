@@ -9,6 +9,7 @@ import { fmtFecha, fmtFechaHora, TIPO_COLOR, ESTADO_CONFIG } from '../utils/help
 import { useTiposOrden } from '../hooks/useTiposOrden';
 import DrawerOrden from '../components/DrawerOrden';
 import { useAuthStore } from '../store/auth.store';
+import { esSupervisor } from '../utils/permisos';
 import { hoyLocal } from '../utils/helpers';
 
 function useIsMobile(breakpoint = 1081) {
@@ -307,7 +308,7 @@ export default function OrdenesPage() {
   const { data: siscadreConexiones = [] } = useQuery({
     queryKey: ['siscadre-conexiones', usuario?.sedeId],
     queryFn:  () => siscadreApi.listarConexiones(usuario.sedeId).then(r => r.data),
-    enabled:  !!usuario?.sedeId,
+    enabled:  !!usuario?.sedeId && !esSupervisor(usuario),
   });
 
   const tieneSiscadre = siscadreConexiones.length > 0;
@@ -450,7 +451,7 @@ export default function OrdenesPage() {
           >
             {isMobile ? 'Exportar' : 'Exportar Excel'}
           </Btn>
-          {tieneSiscadre ? (
+          {esSupervisor(usuario) ? null : tieneSiscadre ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
               <Btn
                 variant="primary" size="sm"

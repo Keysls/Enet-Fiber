@@ -24,6 +24,8 @@ const TITULOS = {
   '/clientes':            'Clientes',
   '/mapa':                'Mapa de Red',
   '/tecnicos':            'Técnicos',
+  '/secretarios':         'Secretario(a)',
+  '/supervisores':        'Supervisores',
   '/reportes':            'Reportes',
   '/perfil':              'Mi Perfil',
   '/programar':           'Programar',

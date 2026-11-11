@@ -29,7 +29,7 @@ router.get('/envios/origen', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', '
 router.post('/envios/:id/confirmar', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.confirmarEnvio);
 router.post('/envios/:id/cancelar', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.cancelarEnvio);
 router.get('/stats', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.statsControlador);
-router.get('/tecnico/:tecnicoId', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.inventarioTecnico);
+router.get('/tecnico/:tecnicoId', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC', 'SUPERVISOR'), ctrl.inventarioTecnico);
 router.get('/mi-inventario',      requireRol('TECNICO'), ctrl.miInventario);
 router.post('/mi-consumo',        requireRol('TECNICO'), ctrl.registrarConsumo);
 router.post('/mi-retiro',         requireRol('TECNICO'), ctrl.registrarRetiro);

@@ -2,8 +2,9 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { stockApi } from '../../services/api';
-import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat, ScanSearch } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat, ScanSearch, Eye } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
+import { esSupervisor as esRolSupervisor, rutaPermitida } from '../../utils/permisos';
 
 const NAV_PRINCIPAL = [
   { to: '/',         label: 'Dashboard', icon: LayoutDashboard },
@@ -25,6 +26,7 @@ const NAV_ALMACEN = [
 const NAV_PERSONAL = [
   { to: '/tecnicos',    label: 'Técnicos',       icon: Users    },
   { to: '/secretarios', label: 'Secretario(a)',  icon: UserCog  },
+  { to: '/supervisores', label: 'Supervisores', icon: Eye      },
 ];
 
 const NAV_PLANTA_EXTERNA = [
@@ -129,6 +131,9 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   const loc     = useLocation();
   const usuario = useAuthStore(s => s.usuario);
   const esAdmin = usuario?.rol === 'ADMIN';
+  const esSupervisor = esRolSupervisor(usuario);
+  // El supervisor ve solo lo suyo del menú principal
+  const navPrincipal = NAV_PRINCIPAL.filter(i => rutaPermitida(usuario, i.to));
 
   // Misma queryKey que la página de Devoluciones: comparten caché y se refresca al aprobar/rechazar
   const { data: devolucionesPendientes } = useQuery({
@@ -179,7 +184,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={S.brandName}>Enet Fiber Perú</div>
               <div style={S.brandSub}>
-                {esAdmin ? 'Panel Administrador' : 'Panel Secretaría'}
+                {esAdmin ? 'Panel Administrador' : esSupervisor ? 'Panel Supervisor' : 'Panel Secretaría'}
               </div>
             </div>
           )}
@@ -190,7 +195,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
 
           {/* Menú principal */}
           {!colapsado ? <div style={S.sectionLabel}>Menú principal</div> : <div style={S.sectionDivider} />}
-          {NAV_PRINCIPAL.map(({ to, label, icon: Icon }) => (
+          {navPrincipal.map(({ to, label, icon: Icon }) => (
             <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
           ))}
 
@@ -211,6 +216,14 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
               {NAV_PLANTA_EXTERNA.map(({ to, label, icon: Icon }) => (
                 <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
               ))}
+            </>
+          )}
+
+          {/* Supervisor de técnicos: solo la lista de técnicos */}
+          {esSupervisor && (
+            <>
+              {!colapsado ? <div style={S.sectionLabel}>Personal</div> : <div style={S.sectionDivider} />}
+              <NavItem to="/tecnicos" label="Técnicos" Icon={Users} active={isActive('/tecnicos')} {...navItemProps} />
             </>
           )}
 

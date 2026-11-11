@@ -35,7 +35,7 @@ const listar = async (req, res, next) => {
     const esSoloInternet = soloInternet === 'true';
 
     // Scope por rol
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol)) {
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol)) {
       where.sedeId = req.usuario.sedeId;
     } else if (sedeId) {
       where.sedeId = sedeId;
@@ -139,7 +139,7 @@ const listar = async (req, res, next) => {
 const obtener = async (req, res, next) => {
   try {
     const esSoloInternet = req.query.soloInternet === 'true';
-    const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
     const tipoServicioQuery = req.query.tipoServicio || undefined;
     const contrato = await prisma.contrato.findFirst({
@@ -182,7 +182,7 @@ const obtener = async (req, res, next) => {
     if (!contrato) return res.status(404).json({ error: 'Contrato no encontrado' });
 
     // Scope por rol: ADMIN solo su sede
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && contrato.sedeId !== req.usuario.sedeId) {
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && contrato.sedeId !== req.usuario.sedeId) {
       return res.status(403).json({ error: 'No tienes acceso a este contrato' });
     }
 
@@ -257,7 +257,7 @@ const mapa = async (req, res, next) => {
     const where = {};
 
     // Scope por rol: ADMIN solo su sede
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol)) {
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol)) {
       where.sedeId = req.usuario.sedeId;
     } else if (sedeId) {
       where.sedeId = sedeId;
@@ -329,7 +329,7 @@ const guardarWan = async (req, res, next) => {
   try {
     const { usaPppoe, pppoeUser, pppoePassword } = req.body;
     const { ipWan, mascara, gateway } = req.body;
-    const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
     if (!sedeId) {
       return res.status(400).json({ error: 'Debe indicar la sede del contrato (sedeId)' });
@@ -443,7 +443,7 @@ const confirmarExcel = async (req, res, next) => {
       return res.status(400).json({ error: 'No hay contratos para importar' });
 
     // El ADMIN importa a su sede. SUPERADMIN/NOC deben mandar sedeId.
-    const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol)
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol)
       ? req.usuario.sedeId
       : req.body.sedeId;
 
@@ -531,7 +531,7 @@ const actualizarUbicacion = async (req, res, next) => {
     if (isNaN(lat) || isNaN(lng))
       return res.status(400).json({ error: 'Coordenadas inválidas' });
 
-    const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
     const tipoServicioQuery = req.query.tipoServicio || undefined;
     const contrato = await prisma.contrato.findFirst({
@@ -571,7 +571,7 @@ const actualizarPrecinto = async (req, res, next) => {
     if (precinto === undefined)
       return res.status(400).json({ error: 'precinto es requerido' });
 
-    const sedeId = ['ADMIN','SECRETARIA'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
 
     const tipoServicioQuery = req.query.tipoServicio || undefined;
     const contrato = await prisma.contrato.findFirst({

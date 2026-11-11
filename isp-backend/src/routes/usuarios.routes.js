@@ -151,11 +151,16 @@ router.post('/', requireRol('SUPERADMIN'), async (req, res, next) => {
 // SECRETARIOS — ADMIN gestiona secretarios de su sede
 // ═════════════════════════════════════════════════════════════
 
-// GET /api/usuarios/secretarios — lista secretarios de la sede del admin
-router.get('/secretarios', requireRol('ADMIN'), async (req, res, next) => {
+// Cuentas que el ADMIN gestiona en su sede: /secretarios → SECRETARIA, /supervisores → SUPERVISOR
+const ROL_DE_RUTA = { secretarios: 'SECRETARIA', supervisores: 'SUPERVISOR' };
+const ROLES_GESTIONADOS_POR_ADMIN = Object.values(ROL_DE_RUTA);
+
+// GET /api/usuarios/secretarios | /supervisores — lista las cuentas de ese rol en la sede del admin
+router.get(['/secretarios', '/supervisores'], requireRol('ADMIN'), async (req, res, next) => {
   try {
+    const rol = ROL_DE_RUTA[req.path.replace(/\//g, '')];
     const secretarios = await prisma.usuario.findMany({
-      where: { sedeId: req.usuario.sedeId, rol: 'SECRETARIA' },
+      where: { sedeId: req.usuario.sedeId, rol },
       select: {
         id: true, nombre: true, apellido: true, email: true,
         telefono: true, activo: true, createdAt: true, totpActivo: true,
@@ -166,9 +171,10 @@ router.get('/secretarios', requireRol('ADMIN'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/usuarios/secretarios — ADMIN crea un secretario en su sede
-router.post('/secretarios', requireRol('ADMIN'), async (req, res, next) => {
+// POST /api/usuarios/secretarios | /supervisores — ADMIN crea la cuenta en su sede
+router.post(['/secretarios', '/supervisores'], requireRol('ADMIN'), async (req, res, next) => {
   try {
+    const rol = ROL_DE_RUTA[req.path.replace(/\//g, '')];
     const { nombre, apellido, email, password, telefono, dni } = req.body;
     const sedeId = req.usuario.sedeId;
 
@@ -183,7 +189,7 @@ router.post('/secretarios', requireRol('ADMIN'), async (req, res, next) => {
         email:    email.toLowerCase().trim(),
         password: hash,
         telefono: telefono || null,
-        rol:      'SECRETARIA',
+        rol,
         sedeId,
       },
       select: {
@@ -214,9 +220,9 @@ router.patch('/:id/desactivar-2fa', requireRol('SUPERADMIN', 'ADMIN'), async (re
     const usuario = await prisma.usuario.findUnique({ where: { id: req.params.id } });
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    // ADMIN solo puede desactivar 2FA de secretarios de su propia sede
+    // ADMIN solo puede desactivar 2FA de secretarios y supervisores de su propia sede
     if (req.usuario.rol === 'ADMIN') {
-      if (usuario.sedeId !== req.usuario.sedeId || usuario.rol !== 'SECRETARIA')
+      if (usuario.sedeId !== req.usuario.sedeId || !ROLES_GESTIONADOS_POR_ADMIN.includes(usuario.rol))
         return res.status(403).json({ error: 'Solo puedes gestionar secretarios de tu sede' });
     }
 
@@ -259,6 +265,12 @@ router.patch('/:id/cerrar-sesion', requireRol('SUPERADMIN'), async (req, res, ne
 router.patch('/:id/activar', requireRol('SUPERADMIN', 'ADMIN'), async (req, res, next) => {
   try {
     const { activo } = req.body;
+    // ADMIN solo activa/desactiva secretarios y supervisores de su propia sede
+    if (req.usuario.rol === 'ADMIN') {
+      const target = await prisma.usuario.findUnique({ where: { id: req.params.id } });
+      if (!target || target.sedeId !== req.usuario.sedeId || !ROLES_GESTIONADOS_POR_ADMIN.includes(target.rol))
+        return res.status(403).json({ error: 'Solo puedes gestionar secretarios y supervisores de tu sede' });
+    }
     const usuario = await prisma.usuario.update({
       where: { id: req.params.id },
       data:  { activo },
@@ -284,7 +296,7 @@ router.patch('/:id/password', async (req, res, next) => {
     let esAdminDeSede = false;
     if (esAdmin && !esPropioUsuario) {
       const target = await prisma.usuario.findUnique({ where: { id: req.params.id } });
-      esAdminDeSede = target?.sedeId === req.usuario.sedeId && target?.rol === 'SECRETARIA';
+      esAdminDeSede = target?.sedeId === req.usuario.sedeId && ROLES_GESTIONADOS_POR_ADMIN.includes(target?.rol);
     }
 
     if (!esPropioUsuario && !esSuperAdmin && !esAdminDeSede)

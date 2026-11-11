@@ -27,7 +27,7 @@ const listar = async (req, res, next) => {
       ...(estado && { estado }),
     };
 
-    if (rol === 'ADMIN' || rol === 'SECRETARIA') {
+    if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') {
       where.sedeId = miSede;
     } else if (rol === 'TECNICO') {
       const tecnico = await prisma.tecnico.findUnique({
@@ -78,7 +78,7 @@ const obtener = async (req, res, next) => {
 
     if (!trabajo) return res.status(404).json({ error: 'Trabajo no encontrado' });
 
-    if (['ADMIN', 'SECRETARIA'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
       return res.status(403).json({ error: 'No tienes acceso a este trabajo' });
 
     if (req.usuario.rol === 'TECNICO') {
@@ -185,7 +185,7 @@ const editar = async (req, res, next) => {
     if (trabajo.estado === 'COMPLETADO')
       return res.status(400).json({ error: 'No se puede editar un trabajo completado' });
 
-    if (['ADMIN', 'SECRETARIA'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
       return res.status(403).json({ error: 'No tienes acceso a este trabajo' });
 
     if (req.usuario.rol === 'TECNICO') {
@@ -274,7 +274,7 @@ const completar = async (req, res, next) => {
     if (trabajo.estado === 'COMPLETADO')
       return res.status(400).json({ error: 'El trabajo ya está completado' });
 
-    if (['ADMIN', 'SECRETARIA'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
       return res.status(403).json({ error: 'No tienes acceso a este trabajo' });
 
     if (req.usuario.rol === 'TECNICO') {
@@ -309,7 +309,7 @@ const agregarTecnico = async (req, res, next) => {
     if (trabajo.estado === 'COMPLETADO')
       return res.status(400).json({ error: 'No se puede modificar un trabajo completado' });
 
-    if (['ADMIN', 'SECRETARIA'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && trabajo.sedeId !== req.usuario.sedeId)
       return res.status(403).json({ error: 'No tienes acceso a este trabajo' });
 
     // Verificar que el técnico sea de la misma sede

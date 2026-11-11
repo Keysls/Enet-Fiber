@@ -143,7 +143,7 @@ export default function OrdenDetalle() {
   const tieneInternet = esInternet || esDuo;
   const inst       = orden.instalacion;
   const enCurso    = orden.estado === 'ACEPTADA' || orden.estado === 'EN_PROCESO';
-  const puedeCambiarTecnico = ['ADMIN', 'SUPERADMIN'].includes(usuario?.rol)
+  const puedeCambiarTecnico = ['ADMIN', 'SUPERADMIN', 'SUPERVISOR'].includes(usuario?.rol)
     && ['PENDIENTE_TECNICO', 'ACEPTADA', 'EN_PROCESO'].includes(orden.estado)
     && !esDeGrupo(orden.tipoOrden, 'SOLO_NOC');
   const tecnicosDestino = (tecnicos || []).filter(t => t.id !== orden.tecnicoId && (!t.sedeId || t.sedeId === orden.sedeId));
@@ -176,12 +176,14 @@ export default function OrdenDetalle() {
           <p style={{ color: 'var(--txt-3)', fontSize: 12 }}>Creada {fmtFechaHora(orden.createdAt)}</p>
         </div>
         <div className="od-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {usuario?.rol !== 'SUPERVISOR' && (
           <select value={orden.estado} onChange={e => estadoMut.mutate(e.target.value)}
             style={{ padding: '7px 12px', background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--txt)', fontSize: 12, outline: 'none' }}>
             {['PENDIENTE_NOC','PENDIENTE_TECNICO','ACEPTADA','EN_PROCESO','COMPLETADA','CANCELADA','REPROGRAMADA'].map(s => (
               <option key={s} value={s}>{s.replace(/_/g,' ')}</option>
             ))}
           </select>
+          )}
         </div>
       </div>
 

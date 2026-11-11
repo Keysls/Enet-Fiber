@@ -219,6 +219,7 @@ function PanelFlotante({ esMovil, anclaje, onCerrar, children }) {
 export default function MapaPage() {
   const qc = useQueryClient();
   const usuario = useAuthStore(s => s.usuario);
+  const soloVer = usuario?.rol === 'SUPERVISOR';
   const esMovil = useEsMovil();
 
   const [estadoFiltro,   setEstadoFiltro]   = useState('');
@@ -480,7 +481,7 @@ export default function MapaPage() {
                         <div style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: cfg.color + '22', color: cfg.color, marginBottom: 8 }}>
                           {cfg.label}
                         </div>
-                        <div><Link to={`/clientes/${p.numero}`} style={{ fontSize: 11, color: '#3b9fd4', fontWeight: 700 }}>Ver detalle →</Link></div>
+                        {!soloVer && <div><Link to={`/clientes/${p.numero}`} style={{ fontSize: 11, color: '#3b9fd4', fontWeight: 700 }}>Ver detalle →</Link></div>}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -509,7 +510,7 @@ export default function MapaPage() {
                     <div style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: estadoCfg.color + '22', color: estadoCfg.color, marginBottom: 8 }}>
                       {estadoCfg.label}
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    {!soloVer && <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => abrirFormEditar(pt)}
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, border: '1px solid #1E3A8A', background: 'transparent', color: '#1E3A8A', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                         <Pencil size={11}/> Editar
@@ -518,7 +519,7 @@ export default function MapaPage() {
                         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 6, border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                         <Trash2 size={11}/> Eliminar
                       </button>
-                    </div>
+                    </div>}
                   </div>
                 </Popup>
               </Marker>
@@ -643,7 +644,7 @@ export default function MapaPage() {
       </div>
 
       {/* ── Arriba-derecha: importar + agregar ── */}
-      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 500, display: 'flex', gap: 8 }}>
+      {!soloVer && <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 500, display: 'flex', gap: 8 }}>
         <label style={esMovil
           ? { ...btnControl(false), opacity: importarMut.isPending ? 0.6 : 1, position: 'relative' }
           : { ...cajaFlotante, display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--txt-2)', opacity: importarMut.isPending ? 0.6 : 1 }}>
@@ -669,7 +670,7 @@ export default function MapaPage() {
             ? <><X size={esMovil ? 18 : 14}/>{!esMovil && ' Cancelar'}</>
             : <><Plus size={esMovil ? 18 : 14}/>{!esMovil && ' Agregar punto'}</>}
         </button>
-      </div>
+      </div>}
 
       {/* ── Derecha: botón Cobertura + panel ── */}
       <div style={{ position: 'absolute', top: 60, right: 12, zIndex: 500 }}>

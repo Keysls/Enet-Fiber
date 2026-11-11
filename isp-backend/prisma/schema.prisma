@@ -824,6 +824,7 @@ enum Rol {
   ADMIN
   TECNICO
   SECRETARIA
+  SUPERVISOR   // supervisor de técnicos: ve órdenes/técnicos/mapa/reportes de su sede y asigna
 }
 
 enum TipoOrden {

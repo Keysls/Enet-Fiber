@@ -45,7 +45,7 @@ export const useAuthStore = create((set, get) => ({
         return { ok: false, requiere2FA: true };
       }
 
-      if (!['ADMIN', 'SECRETARIA'].includes(data.usuario.rol)) {
+      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR'].includes(data.usuario.rol)) {
         await invalidarTokenHuerfano(data.token);
         set({ loading: false });
         return { ok: false, error: 'No tienes acceso al panel de administrador' };
@@ -80,7 +80,7 @@ export const useAuthStore = create((set, get) => ({
         dispositivo: 'Panel Admin',
       });
 
-      if (!['ADMIN', 'SECRETARIA'].includes(data.usuario.rol)) {
+      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR'].includes(data.usuario.rol)) {
         await invalidarTokenHuerfano(data.token);
         set({ loading: false });
         return { ok: false, error: 'No tienes acceso al panel de administrador' };

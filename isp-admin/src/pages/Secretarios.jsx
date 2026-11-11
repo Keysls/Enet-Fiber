@@ -74,8 +74,24 @@ function SectionLabel({ children }) {
   );
 }
 
+// ── Qué cuenta gestiona la pantalla (la misma sirve para secretarias y supervisores) ──
+const TIPOS = {
+  secretaria: {
+    titulo: 'Secretario(a)', uno: 'secretario(a)', Uno: 'Secretario(a)', plural: 'secretarios', queryKey: 'secretarios',
+    listar: () => usuariosApi.listarSecretarios(), crear: (f) => usuariosApi.crearSecretario(f),
+    emailEjemplo: 'secretaria@enetfiber.com', icono: '👩‍💼',
+    acceso: 'La secretaria tendrá acceso a Dashboard, Órdenes, Clientes y Mapa de la sede',
+  },
+  supervisor: {
+    titulo: 'Supervisores', uno: 'supervisor', Uno: 'Supervisor', plural: 'supervisores', queryKey: 'supervisores',
+    listar: () => usuariosApi.listarSupervisores(), crear: (f) => usuariosApi.crearSupervisor(f),
+    emailEjemplo: 'supervisor@enetfiber.com', icono: '🧑‍🔧',
+    acceso: 'El supervisor verá Órdenes, Técnicos, Mapa y Reportes, y podrá asignar o cambiar el técnico de una orden (nada más) en la sede',
+  },
+};
+
 // ── Modal Crear ───────────────────────────────────────────────
-function ModalCrear({ open, onClose }) {
+function ModalCrear({ open, onClose, t }) {
   const qc      = useQueryClient();
   const usuario = useAuthStore(s => s.usuario);
   const [form, setForm]   = useState({ nombre: '', apellido: '', email: '', password: '', telefono: '', dni: '' });
@@ -83,15 +99,15 @@ function ModalCrear({ open, onClose }) {
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const mut = useMutation({
-    mutationFn: () => usuariosApi.crearSecretario(form),
+    mutationFn: () => t.crear(form),
     onSuccess: () => {
-      toast.success('Secretario(a) creado correctamente');
-      qc.invalidateQueries(['secretarios']);
+      toast.success(`${t.Uno} creado correctamente`);
+      qc.invalidateQueries([t.queryKey]);
       onClose();
       setForm({ nombre: '', apellido: '', email: '', password: '', telefono: '', dni: '' });
     },
     onError: e => {
-      const msg = e.response?.data?.error || 'Error al crear secretario(a)';
+      const msg = e.response?.data?.error || `Error al crear ${t.uno}`;
       toast.error(msg);
       if (msg.toLowerCase().includes('email')) setErrors(p => ({ ...p, email: 'Este email ya está registrado' }));
     },
@@ -109,7 +125,7 @@ function ModalCrear({ open, onClose }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Nuevo(a) Secretario(a)" width={500}>
+    <Modal open={open} onClose={onClose} title={`Nuevo ${t.uno}`} width={500}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         <SectionLabel>Datos personales</SectionLabel>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
@@ -122,7 +138,7 @@ function ModalCrear({ open, onClose }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <Input label="Email *" value={form.email} onChange={e => set('email', e.target.value)} error={errors.email} placeholder="secretaria@enetfiber.com" type="email" />
+              <Input label="Email *" value={form.email} onChange={e => set('email', e.target.value)} error={errors.email} placeholder={t.emailEjemplo} type="email" />
             </div>
             <Btn variant="ghost" size="sm"
               style={{ marginBottom: errors.email ? 22 : 0, flexShrink: 0, fontSize: 11, whiteSpace: 'nowrap' }}
@@ -139,11 +155,11 @@ function ModalCrear({ open, onClose }) {
           <Input label="Contraseña *" type="password" value={form.password} onChange={e => set('password', e.target.value)} error={errors.password} placeholder="Mínimo 6 caracteres" />
         </div>
         <div style={{ fontSize: 12, color: 'var(--txt-3)', padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 8, marginBottom: 16 }}>
-          La secretaria tendrá acceso a Dashboard, Órdenes, Clientes y Mapa de la sede <strong>{usuario?.sede?.nombre}</strong>.
+          {t.acceso} <strong>{usuario?.sede?.nombre}</strong>.
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-          <Btn variant="primary" onClick={handleSubmit} loading={mut.isPending}>Crear secretario(a)</Btn>
+          <Btn variant="primary" onClick={handleSubmit} loading={mut.isPending}>Crear {t.uno}</Btn>
         </div>
       </div>
     </Modal>
@@ -151,7 +167,7 @@ function ModalCrear({ open, onClose }) {
 }
 
 // ── Modal Editar ──────────────────────────────────────────────
-function ModalEditar({ open, onClose, secretario }) {
+function ModalEditar({ open, onClose, secretario, t }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ nombre: '', apellido: '', telefono: '', dni: '' });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -167,13 +183,13 @@ function ModalEditar({ open, onClose, secretario }) {
 
   const mut = useMutation({
     mutationFn: () => usuariosApi.actualizar(secretario.id, form),
-    onSuccess:  () => { toast.success('Secretario(a) actualizado'); qc.invalidateQueries(['secretarios']); onClose(); },
+    onSuccess:  () => { toast.success(`${t.Uno} actualizado`); qc.invalidateQueries([t.queryKey]); onClose(); },
     onError:    e  => toast.error(e.response?.data?.error || 'Error'),
   });
 
   if (!secretario) return null;
   return (
-    <Modal open={open} onClose={onClose} title="Editar secretario(a)" width={440}>
+    <Modal open={open} onClose={onClose} title={`Editar ${t.uno}`} width={440}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: 'var(--bg-3)', borderRadius: 12, marginBottom: 20 }}>
         <Avatar nombre={secretario.nombre} apellido={secretario.apellido} size={44} />
         <div>
@@ -236,6 +252,11 @@ function ModalPassword({ open, onClose, secretario }) {
 
 // ── Página principal ──────────────────────────────────────────
 export default function SecretariosPage() {
+  return <CuentasDeSede tipo="secretaria" />;
+}
+
+export function CuentasDeSede({ tipo }) {
+  const t = TIPOS[tipo];
   const qc      = useQueryClient();
   const usuario = useAuthStore(s => s.usuario);
   const [showCrear,   setShowCrear]   = useState(false);
@@ -243,15 +264,15 @@ export default function SecretariosPage() {
   const [cambiandoPass, setCambiandoPass] = useState(null);
 
   const { data: secretarios, isLoading } = useQuery({
-    queryKey: ['secretarios'],
-    queryFn:  () => usuariosApi.listarSecretarios().then(r => r.data),
+    queryKey: [t.queryKey],
+    queryFn:  () => t.listar().then(r => r.data),
   });
 
   const toggleActivoMut = useMutation({
     mutationFn: ({ id, activo }) => usuariosApi.actualizar(id, { activo }),
     onSuccess:  (_, { activo }) => {
-      toast.success(activo ? '✓ Secretario(a) habilitado' : 'Secretario(a) deshabilitado');
-      qc.invalidateQueries(['secretarios']);
+      toast.success(activo ? `✓ ${t.Uno} habilitado` : `${t.Uno} deshabilitado`);
+      qc.invalidateQueries([t.queryKey]);
     },
     onError: () => toast.error('Error al cambiar estado'),
   });
@@ -261,21 +282,21 @@ export default function SecretariosPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--txt)' }}>
-            Secretario(a)
+            {t.titulo}
           </h1>
           <p style={{ color: 'var(--txt-3)', fontSize: 12, marginTop: 4 }}>
-            {secretarios?.length || 0} secretario{secretarios?.length !== 1 ? 's' : ''} en {usuario?.sede?.nombre || 'tu sede'}
+            {secretarios?.length || 0} {secretarios?.length === 1 ? t.uno : t.plural} en {usuario?.sede?.nombre || 'tu sede'}
           </p>
         </div>
         <Btn variant="primary" size="sm" icon={<UserPlus size={13}/>} onClick={() => setShowCrear(true)}>
-          Nuevo(a) secretario(a)
+          Nuevo {t.uno}
         </Btn>
       </div>
 
       {isLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28}/></div>
       ) : (secretarios || []).length === 0 ? (
-        <Empty icon="👩‍💼" title="Sin secretarios registrados" subtitle="Agrega un secretario(a) para tu sede"/>
+        <Empty icon={t.icono} title={`Sin ${t.plural} registrados`} subtitle={`Agrega un ${t.uno} para tu sede`}/>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           {(secretarios || []).map((s, idx) => (
@@ -322,7 +343,7 @@ export default function SecretariosPage() {
                     onClick={() => {
                       if (confirm(`¿Desactivar 2FA de ${s.nombre} ${s.apellido}?\n\nÚsalo solo si perdió acceso a su autenticador.`)) {
                         usuariosApi.desactivar2fa(s.id)
-                          .then(() => { toast.success(`2FA de ${s.nombre} desactivado`); qc.invalidateQueries(['secretarios']); })
+                          .then(() => { toast.success(`2FA de ${s.nombre} desactivado`); qc.invalidateQueries([t.queryKey]); })
                           .catch(e => toast.error(e.response?.data?.error || 'Error al desactivar 2FA'));
                       }
                     }}>
@@ -344,8 +365,8 @@ export default function SecretariosPage() {
         </Card>
       )}
 
-      <ModalCrear    open={showCrear}       onClose={() => setShowCrear(false)} />
-      <ModalEditar   open={!!editando}      onClose={() => setEditando(null)}      secretario={editando} />
+      <ModalCrear    open={showCrear}       onClose={() => setShowCrear(false)} t={t} />
+      <ModalEditar   open={!!editando}      onClose={() => setEditando(null)}      secretario={editando} t={t} />
       <ModalPassword open={!!cambiandoPass} onClose={() => setCambiandoPass(null)} secretario={cambiandoPass} />
     </div>
   );

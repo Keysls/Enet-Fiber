@@ -135,6 +135,9 @@ export const usuariosApi = {
   // Secretarios
   listarSecretarios: ()           => api.get('/usuarios/secretarios'),
   crearSecretario:   (data)       => api.post('/usuarios/secretarios', data),
+  // Supervisores de técnicos
+  listarSupervisores: ()          => api.get('/usuarios/supervisores'),
+  crearSupervisor:    (data)      => api.post('/usuarios/supervisores', data),
   actualizar:        (id, data)   => api.patch(`/usuarios/${id}`, data),
   resetPassword:     (id, data)   => api.patch(`/usuarios/${id}/password`, data),
   desactivar2fa:     (id)         => api.patch(`/usuarios/${id}/desactivar-2fa`),

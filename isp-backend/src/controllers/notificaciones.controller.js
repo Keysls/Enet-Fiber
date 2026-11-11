@@ -4,8 +4,9 @@ const prisma = require('../utils/prisma');
 // Lista las notificaciones NO LEÍDAS. Acepta ?sedeId para filtrar.
 const listar = async (req, res, next) => {
   try {
-    const { sedeId } = req.query;
     const rol = req.usuario?.rol;
+    // El supervisor solo ve las de su sede y las de órdenes (no almacén ni NOC)
+    const sedeId = rol === 'SUPERVISOR' ? req.usuario.sedeId : req.query.sedeId;
 
     // SUPERADMIN / OPERADOR_NOC sin sedeId: excluir notificaciones de tipo
     // ENVIO_PENDIENTE_RECEPCION y STOCK_BAJO/CRITICO que son solo para admins de sede
@@ -15,6 +16,7 @@ const listar = async (req, res, next) => {
     const esNoc        = ['SUPERADMIN', 'OPERADOR_NOC'].includes(rol) && !sedeId;
     const esAdmin       = rol === 'ADMIN';
     const esSecretaria  = rol === 'SECRETARIA';
+    const esSupervisor  = rol === 'SUPERVISOR';
 
     const items = await prisma.notificacion.findMany({
       where: {
@@ -23,6 +25,7 @@ const listar = async (req, res, next) => {
         ...(esNoc       && { tipo: { notIn: tiposExcluidosNoc } }),
         ...(esAdmin     && { tipo: { notIn: tiposExcluidosAdmin } }),
         ...(esSecretaria && { tipo: { notIn: tiposExcluidosSecretaria } }),
+        ...(esSupervisor && { tipo: { notIn: [...new Set([...tiposExcluidosSecretaria, ...tiposExcluidosAdmin])] } }),
       },
       orderBy: { createdAt: 'desc' },
       take: 50,

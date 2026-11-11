@@ -1047,9 +1047,11 @@ export default function TecnicosPage() {
               Recomponer
             </Btn>
           )}
+          {usuario?.rol !== 'SUPERVISOR' && (
           <Btn variant="primary" size="sm" icon={<UserPlus size={13}/>} onClick={() => setShowCrear(true)}>
             Nuevo técnico
           </Btn>
+          )}
         </div>
       </div>
 
@@ -1117,6 +1119,7 @@ export default function TecnicosPage() {
                       >
                         <span className="tec-btn-label">Inventario</span>
                       </Btn>
+                      {usuario?.rol !== 'SUPERVISOR' && (<>
                       <Btn variant="ghost" size="sm" icon={<Pencil size={11}/>}   onClick={() => setTecnicoEditar(t)}>
                         <span className="tec-btn-label">Editar</span>
                       </Btn>
@@ -1136,6 +1139,7 @@ export default function TecnicosPage() {
                         loading={toggleActivoMut.isPending}>
                         <span className="tec-btn-label">{t.activo ? 'Deshabilitar' : 'Habilitar'}</span>
                       </Btn>
+                      </>)}
                   </div>
                 </div>
 

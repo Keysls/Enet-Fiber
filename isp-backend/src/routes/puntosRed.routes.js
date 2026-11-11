@@ -14,7 +14,8 @@ const upload = multer({
   limits:  { fileSize: 10 * 1024 * 1024 },   // 10 MB máximo
 });
 
-router.get('/',       rolesPanel, ctrl.listar);
+// El supervisor de técnicos solo ve los puntos de red (no los crea ni edita)
+router.get('/',       requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC', 'SECRETARIA', 'SUPERVISOR'), ctrl.listar);
 router.post('/',      rolesPanel, ctrl.crear);
 router.post('/importar', rolesPanel, upload.single('archivo'), ctrl.importar);
 router.put('/:id',    rolesPanel, ctrl.actualizar);

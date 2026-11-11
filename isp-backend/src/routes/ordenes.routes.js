@@ -7,11 +7,11 @@ router.use(authMiddleware);
 // ═════════════════════════════════════════════════════════════
 // RUTAS LITERALES PRIMERO (deben ir ANTES de las paramétricas)
 // ═════════════════════════════════════════════════════════════
-router.get('/stats',         requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.stats);
-router.get('/reportes',      requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'),                 ctrl.reportes);
+router.get('/stats',         requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.stats);
+router.get('/reportes',      requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'),   ctrl.reportes);
 router.get('/historial-wan', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.historialWan);
 router.get('/notificaciones', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.notificaciones);
-router.get('/exportar',       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.exportarCsv);
+router.get('/exportar',       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.exportarCsv);
 
 // Importar Excel
 router.post('/subir-excel',     requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.subirExcel);
@@ -20,19 +20,19 @@ router.post('/confirmar-excel', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'),
 // ═════════════════════════════════════════════════════════════
 // LISTAR / CREAR
 // ═════════════════════════════════════════════════════════════
-router.get('/',  requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'TECNICO'), ctrl.listar);
+router.get('/',  requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO'), ctrl.listar);
 router.post('/', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.crear);
 
 // ═════════════════════════════════════════════════════════════
 // RUTAS PARAMÉTRICAS (deben ir DESPUÉS de las literales)
 // ═════════════════════════════════════════════════════════════
-router.get('/:id', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'TECNICO'), ctrl.obtener);
+router.get('/:id', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO'), ctrl.obtener);
 
 // ADMIN asigna técnico
-router.patch('/:id/asignar', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.asignar);
+router.patch('/:id/asignar', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.asignar);
 
 // ADMIN cambia o libera el técnico de una orden (también si ya está en proceso)
-router.patch('/:id/cambiar-tecnico', requireRol('SUPERADMIN', 'ADMIN'), ctrl.cambiarTecnico);
+router.patch('/:id/cambiar-tecnico', requireRol('SUPERADMIN', 'ADMIN', 'SUPERVISOR'), ctrl.cambiarTecnico);
 
 // NOC pone WAN
 router.patch('/:id/datos-wan', requireRol('SUPERADMIN', 'OPERADOR_NOC'), ctrl.ponerWan);

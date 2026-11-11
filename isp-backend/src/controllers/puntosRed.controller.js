@@ -10,8 +10,8 @@ const listar = async (req, res, next) => {
     const { sedeId, tipo, estado } = req.query;
     const where = {};
 
-    // Scope por rol: ADMIN solo su sede
-    if (req.usuario.rol === 'ADMIN') {
+    // Scope por rol: ADMIN y SUPERVISOR solo su sede
+    if (['ADMIN', 'SUPERVISOR'].includes(req.usuario.rol)) {
       where.sedeId = req.usuario.sedeId;
     } else if (sedeId) {
       where.sedeId = sedeId;

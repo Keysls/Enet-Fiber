@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import './index.css';
@@ -15,6 +15,8 @@ import Clientes          from './pages/Clientes';
 import ClienteDetalle    from './pages/ClienteDetalle';
 import TecnicosPage      from './pages/Tecnicos';
 import SecretariosPage   from './pages/Secretarios';
+import SupervisoresPage  from './pages/Supervisores';
+import { rutaPermitida } from './utils/permisos';
 import ReportesPage      from './pages/Reportes';
 import PerfilPage        from './pages/Perfil';
 import ResetPasswordPage from './pages/ResetPassword';
@@ -36,8 +38,12 @@ import DevolucionesPage from './pages/Devoluciones';
 import { queryClient } from './queryClient';
 
 function ProtectedRoute({ children }) {
-  const token = useAuthStore(s => s.token);
-  return token ? children : <Navigate to="/login" replace />;
+  const token   = useAuthStore(s => s.token);
+  const usuario = useAuthStore(s => s.usuario);
+  const { pathname } = useLocation();
+  if (!token) return <Navigate to="/login" replace />;
+  if (!rutaPermitida(usuario, pathname)) return <Navigate to="/" replace />;
+  return children;
 }
 
 function App() {
@@ -58,6 +64,7 @@ function App() {
                 <Route path="/clientes/:numero" element={<ClienteDetalle />} />
                 <Route path="/tecnicos"          element={<TecnicosPage />} />
                 <Route path="/secretarios"       element={<SecretariosPage />} />
+                <Route path="/supervisores"      element={<SupervisoresPage />} />
                 <Route path="/reportes"          element={<ReportesPage />} />
                 <Route path="/perfil"            element={<PerfilPage />}   />
                 <Route path="/mapa"              element={<MapaPage />} />

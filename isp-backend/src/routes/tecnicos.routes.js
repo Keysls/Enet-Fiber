@@ -4,11 +4,11 @@ const { authMiddleware, requireRol } = require('../middleware/auth.middleware');
 
 router.use(authMiddleware);
 
-router.get('/ubicaciones', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.obtenerUbicaciones);
+router.get('/ubicaciones', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.obtenerUbicaciones);
 router.patch('/mi-ubicacion', requireRol('TECNICO'), ctrl.reportarUbicacion);
 
-router.get('/',    requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.listar);
-router.get('/:id', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.obtener);
+router.get('/',    requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.listar);
+router.get('/:id', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.obtener);
 router.post('/',                   requireRol('SUPERADMIN', 'ADMIN'), ctrl.crear);
 router.put('/:id',                 requireRol('SUPERADMIN', 'ADMIN'), ctrl.actualizar);
 router.post('/:id/reset-password', requireRol('SUPERADMIN', 'ADMIN'), ctrl.resetPassword);

@@ -150,6 +150,15 @@ export default function DrawerOrden({ ordenId, onCerrar }) {
                 )}
               </Seccion>
 
+              {/* ── Lo que escribió el técnico al completar la orden ── */}
+              {orden.instalacion?.observaciones?.trim() && (
+                <Seccion titulo="Observación del técnico">
+                  <div style={{ padding: '10px 0 12px', fontSize: 13, color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {orden.instalacion.observaciones.trim()}
+                  </div>
+                </Seccion>
+              )}
+
               {/* ── WAN / NOC ── */}
               {orden.usaPppoe && orden.pppoeUser && (
                 <Seccion titulo="WAN — NOC">

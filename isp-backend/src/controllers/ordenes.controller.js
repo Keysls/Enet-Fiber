@@ -212,7 +212,7 @@ const listar = async (req, res, next) => {
           ],
         }),
       };
-    } else if (rol === 'ADMIN' || rol === 'SECRETARIA') {
+    } else if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') {
       // Panel Admin: su sede y la que apoya (filtrable a una sola con ?sedeId=)
       const misSedes = await sedesQueAtiende(miSede);
       where = {
@@ -362,7 +362,7 @@ const obtener = async (req, res, next) => {
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
     // ADMIN solo puede ver órdenes de su sede o de la que apoya
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     // Consumos de materiales registrados para esta orden
@@ -638,7 +638,7 @@ const asignar = async (req, res, next) => {
     if (!ordenActual) return res.status(404).json({ error: 'Orden no encontrada' });
 
     // ADMIN solo puede asignar órdenes de su sede o de la que apoya
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, ordenActual.sedeId)))
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, ordenActual.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (TIPOS_SOLO_NOC.includes(ordenActual.tipoOrden))
@@ -711,7 +711,7 @@ const cambiarTecnico = async (req, res, next) => {
       include: { tecnico: { include: { usuario: { select: { nombre: true, apellido: true } } } } },
     });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
-    if (req.usuario.rol === 'ADMIN' && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
+    if (['ADMIN','SUPERVISOR'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (!['PENDIENTE_TECNICO', 'ACEPTADA', 'EN_PROCESO'].includes(orden.estado))
@@ -949,7 +949,7 @@ const cambiarEstado = async (req, res, next) => {
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
     // ADMIN solo puede tocar órdenes de su sede o de la que apoya
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     // Si no cambia el estado, no hacer nada
@@ -965,7 +965,7 @@ const cambiarEstado = async (req, res, next) => {
       });
 
     // ADMIN no puede forzar transiciones del flujo NOC/técnico
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && ESTADOS_NO_FORZABLES_POR_ADMIN.includes(nuevoEstado))
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && ESTADOS_NO_FORZABLES_POR_ADMIN.includes(nuevoEstado))
       return res.status(403).json({
         error: 'No puedes aplicar este cambio de estado manualmente. Lo hace el técnico o el NOC desde su panel.',
       });
@@ -1009,7 +1009,7 @@ const stats = async (req, res, next) => {
         tipoOrden: { in: [...TIPOS_INTERNET, ...TIPOS_DUO] },
         ...(sedeId && { sedeId }),
       };
-    } else if (rol === 'ADMIN' || rol === 'SECRETARIA') {
+    } else if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') {
       filtro = { sedeId: await filtroSedes(miSede) };
     }
 
@@ -1029,7 +1029,7 @@ const stats = async (req, res, next) => {
       prisma.tecnico.count({
         where: {
           activo: true,
-          ...(rol === 'ADMIN' || rol === 'SECRETARIA') && (miSede && { usuario: { sedeId: miSede } }),
+          ...(rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') && (miSede && { usuario: { sedeId: miSede } }),
         },
       }),
 
@@ -1085,7 +1085,7 @@ const actualizarDatos = async (req, res, next) => {
     const orden = await prisma.ordenServicio.findUnique({ where: { id: req.params.id } });
     if (!orden) return res.status(404).json({ error: 'Orden no encontrada' });
 
-    if (['ADMIN','SECRETARIA'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && !(await puedeAtender(req.usuario.sedeId, orden.sedeId)))
       return res.status(403).json({ error: 'No tienes acceso a esta orden' });
 
     if (!['PENDIENTE_NOC', 'PENDIENTE_TECNICO'].includes(orden.estado))
@@ -1153,7 +1153,7 @@ const reportes = async (req, res, next) => {
 
     // ADMIN ve su sede y, de la sede que apoya, solo lo que atendieron sus técnicos
     // (lo reportan como trabajo propio). SUPERADMIN/OPERADOR_NOC ven todo.
-    const esAdmin  = ['ADMIN','SECRETARIA'].includes(req.usuario.rol);
+    const esAdmin  = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol);
     const apoyadas = esAdmin ? (await sedesQueAtiende(req.usuario.sedeId)).filter(id => id !== req.usuario.sedeId) : [];
     const whereSede = {
       ...(esAdmin && apoyadas.length === 0 && { sedeId: req.usuario.sedeId }),
@@ -1201,7 +1201,7 @@ const reportes = async (req, res, next) => {
       prisma.tecnico.count({
         where: {
           activo: true,
-          ...(['ADMIN','SECRETARIA'].includes(req.usuario.rol) && {
+          ...(['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && {
             usuario: { sedeId: req.usuario.sedeId },
           }),
         },

@@ -33,7 +33,7 @@ const decrementProductoTotal = async (tx, { productoId, cantidad }) => {
 };
 
 const getSedeId = (req) => {
-  if (['ADMIN','SECRETARIA'].includes(req.usuario?.rol)) return req.usuario.sedeId;
+  if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario?.rol)) return req.usuario.sedeId;
   return req.query.sede_id || req.query.sedeId || req.body?.sede_id || req.body?.sedeId || req.usuario?.sedeId;
 };
 
@@ -573,7 +573,7 @@ const confirmarEnvio = async (req, res, next) => {
 
     // ADMIN y SECRETARIA solo pueden confirmar envíos destinados a su propia sede.
     // SUPERADMIN y OPERADOR_NOC pueden confirmar cualquier envío.
-    if (['ADMIN', 'SECRETARIA'].includes(rol) && envio.sedeId !== usuarioSedeId) {
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(rol) && envio.sedeId !== usuarioSedeId) {
       return res.status(403).json({ error: 'No tienes permiso para confirmar este envío' });
     }
 
@@ -639,7 +639,7 @@ const cancelarEnvio = async (req, res, next) => {
 
     // ADMIN y SECRETARIA solo pueden cancelar envíos de su propia sede (como origen o destino).
     // SUPERADMIN y OPERADOR_NOC pueden cancelar cualquier envío.
-    if (['ADMIN', 'SECRETARIA'].includes(rol) &&
+    if (['ADMIN','SECRETARIA','SUPERVISOR'].includes(rol) &&
         envio.sedeId !== usuarioSedeId && envio.sedeOrigenId !== usuarioSedeId) {
       return res.status(403).json({ error: 'No tienes permiso para cancelar este envío' });
     }
@@ -834,7 +834,7 @@ const statsControlador = async (req, res, next) => {
 
 const auditoriaControlador = async (req, res, next) => {
   try {
-    const sedeId = req.query.sedeId || req.query.sede_id || (['ADMIN','SECRETARIA'].includes(req.usuario?.rol) ? req.usuario.sedeId : null);
+    const sedeId = req.query.sedeId || req.query.sede_id || (['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario?.rol) ? req.usuario.sedeId : null);
     // sedeId es opcional para SUPERADMIN/NOC — sin él ve todos los movimientos
 
     // Cargar sedes para resolver nombres desde sedeId

@@ -7,7 +7,7 @@ const listar = async (req, res, next) => {
   try {
     // para_envio=true permite al ADMIN ver todas las sedes activas (elegir destino de envío)
     const paraEnvio = req.query.para_envio === 'true';
-    const where = req.usuario.rol === 'ADMIN' && !paraEnvio
+    const where = (req.usuario.rol === 'ADMIN' && !paraEnvio) || req.usuario.rol === 'SUPERVISOR'
       ? { id: req.usuario.sedeId }
       : {};
 
