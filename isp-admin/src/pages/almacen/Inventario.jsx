@@ -250,6 +250,132 @@ function ItemsList({ stock, items, setItems, showDisponible = true, sedeId, allo
   );
 }
 
+// ── Enviar a sede: ONU por cantidad (sin código) y/o por código PON ──
+// Disponibilidad de una ONU en la sede origen: stock - ONUs con código disponibles = sin código
+function useOnuDisponibilidad(sedeId, productoId, stockTotalDisp) {
+  const q = useQuery({
+    queryKey: ['onus-panel-inline', sedeId, productoId],
+    enabled: Boolean(sedeId && productoId),
+    queryFn: () => onusApi.disponibles({ sedeId, producto_id: productoId }).then(r => r.data),
+  });
+  const conCodigo = (q.data || []).length;
+  const sinCodigo = Math.max(0, (Number(stockTotalDisp) || 0) - conCodigo);
+  return { isLoading: q.isLoading, conCodigo, sinCodigo };
+}
+
+// Total y validez de un ítem del envío (lo usan el editor, el resumen y el botón Confirmar)
+function infoItemEnvio(i, stockList) {
+  const prod = (stockList || []).find(s => String(s.producto_id) === String(i.producto_id));
+  const esOnu = isOnuProduct(prod || {});
+  const usaPon = esOnu && (i.modo_onu || 'cantidad') === 'pon';
+  const conCodigo = esOnu ? (i.onu_ids || []).length : 0;
+  const sinCodigo = usaPon ? 0 : (Number(i.cantidad) || 0);
+  const excedeSin = esOnu && !usaPon && i.sin_max != null && sinCodigo > i.sin_max;
+  const total = sinCodigo + conCodigo;
+  return { esOnu, usaPon, sinCodigo, conCodigo, total, valido: Boolean(i.producto_id) && total > 0 && !excedeSin };
+}
+
+// Modo "Por cantidad" de una ONU: el número son SOLO las sin código; no pasa de las disponibles
+function CantidadOnuInput({ sedeId, productoId, stockDisp, item, idx, patch, verbo = 'enviar' }) {
+  const { isLoading, sinCodigo } = useOnuDisponibilidad(sedeId, productoId, stockDisp);
+  const cant = Number(item.cantidad) || 0;
+  useEffect(() => {
+    if (isLoading) return;
+    const cambios = {};
+    if (item.sin_max !== sinCodigo) cambios.sin_max = sinCodigo;
+    if (cant > sinCodigo) cambios.cantidad = sinCodigo > 0 ? String(sinCodigo) : '';
+    if (Object.keys(cambios).length) patch(idx, cambios);
+  }, [isLoading, sinCodigo, cant, item.sin_max]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onChange = (e) => {
+    const v = e.target.value;
+    if (v === '') { patch(idx, { cantidad: '' }); return; }
+    const n = Math.max(0, Math.floor(Number(v)) || 0);
+    patch(idx, { cantidad: String(isLoading ? n : Math.min(n, sinCodigo)) });
+  };
+  return (
+    <input
+      style={{ height: 34, border: '1px solid var(--border)', borderRadius: 8, padding: '0 8px', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 13 }}
+      type="number" min="0" max={sinCodigo} placeholder="Sin código" disabled={!isLoading && sinCodigo === 0}
+      title={`Cantidad de ONUs SIN código a ${verbo}`}
+      value={item.cantidad} onChange={onChange} />
+  );
+}
+
+// Debajo del input: disponibilidad, ONUs CON código opcionales (se suman) y total del ítem
+function OnuCantidadConCodigos({ sedeId, productoId, cantidad, stockTotalDisp, onuIds, onChangeOnuIds, verbo = 'enviar' }) {
+  const { isLoading, conCodigo, sinCodigo } = useOnuDisponibilidad(sedeId, productoId, stockTotalDisp);
+  const cant = Number(cantidad) || 0;
+  const conSel = (onuIds || []).length;
+  if (isLoading) return <div style={{ fontSize: 11, color: 'var(--txt-3)', paddingLeft: 2 }}>Verificando disponibilidad de códigos...</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--txt-3)', paddingLeft: 2 }}>
+        <span>Sin código disponibles: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--txt)' }}>{sinCodigo}</strong></span>
+        <span>Con código disponibles: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--txt)' }}>{conCodigo}</strong></span>
+      </div>
+      {conCodigo > 0 && <OnuPanelInline sedeId={sedeId} productoId={productoId} selectedIds={onuIds || []} onChange={onChangeOnuIds} />}
+      <div style={{ fontSize: 11, color: 'var(--txt-3)', paddingLeft: 2 }}>
+        Total a {verbo}: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{cant + conSel}</strong>
+        {' '}({cant} sin código + {conSel} con código)
+      </div>
+    </div>
+  );
+}
+
+const botonModoStyle = (activo) => ({ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: activo ? 'none' : '1px solid var(--border)', background: activo ? 'var(--accent)' : 'var(--bg-3)', color: activo ? '#fff' : 'var(--txt-3)' });
+
+// Lista de productos de "Enviar a sede" y "Salida directa": ONU con modo "Por cantidad" / "Por código PON"
+// (verbo: "enviar" | "sacar", solo cambia los textos)
+function ItemsListEnvio({ stock, items, setItems, sedeId, verbo = 'enviar' }) {
+  const patch = (idx, cambios) => setItems(items.map((it, i) => i === idx ? { ...it, ...cambios } : it));
+  const update = (idx, key, value) => patch(idx, { [key]: value });
+  const remove = idx => setItems(items.filter((_, i) => i !== idx));
+  return (
+    <div>
+      <label style={{ display: 'block', marginBottom: 6, fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Productos seleccionados ({items.length})</label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.length === 0 && <div style={{ color: 'var(--txt-3)', fontSize: 13, padding: '8px 0' }}>Busca y selecciona productos.</div>}
+        {items.map((item, idx) => {
+          const prod = stock.find(s => String(s.producto_id) === String(item.producto_id));
+          const { esOnu, usaPon, total } = infoItemEnvio(item, stock);
+          const stockDisp = prod?.cantidad || 0;
+          const excede = total > stockDisp && stockDisp > 0;
+          return (
+            <div key={idx}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px auto', gap: 8, alignItems: 'center', padding: 8, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-3)' }}>
+                <div>
+                  <strong style={{ fontSize: 13 }}>{prod?.producto || 'Producto'}</strong>
+                  <div style={{ color: 'var(--txt-3)', fontSize: 11 }}>{prod?.codigo || '—'}{prod?.cantidad != null ? ` · disp. ${prod.cantidad}` : ''}</div>
+                </div>
+                {usaPon
+                  ? <div style={{ height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 8, padding: '0 8px', background: 'var(--bg-2)', fontSize: 13, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)', minWidth: 120 }}>
+                      {(item.onu_ids || []).length} ONU{(item.onu_ids || []).length !== 1 ? 's' : ''}
+                    </div>
+                  : esOnu && sedeId
+                  ? <CantidadOnuInput sedeId={sedeId} productoId={item.producto_id} stockDisp={stockDisp} item={item} idx={idx} patch={patch} verbo={verbo} />
+                  : <input style={{ height: 34, border: `1px solid ${excede ? 'var(--red)' : 'var(--border)'}`, borderRadius: 8, padding: '0 8px', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 13 }} type="number" min="1" max={prod?.cantidad || undefined} placeholder="Cantidad" value={item.cantidad} onChange={e => update(idx, 'cantidad', e.target.value)} />
+                }
+                <Btn variant="danger" size="sm" onClick={() => remove(idx)}><X size={15} /></Btn>
+              </div>
+              {esOnu && sedeId && (
+                <div style={{ display: 'flex', gap: 6, padding: '6px 2px 0' }}>
+                  <button type="button" onClick={() => update(idx, 'modo_onu', 'cantidad')} style={botonModoStyle(!usaPon)}>Por cantidad</button>
+                  <button type="button" onClick={() => update(idx, 'modo_onu', 'pon')} style={botonModoStyle(usaPon)}>Por código PON</button>
+                </div>
+              )}
+              {usaPon && sedeId && <OnuPanelInline sedeId={sedeId} productoId={item.producto_id} selectedIds={item.onu_ids || []} onChange={ids => update(idx, 'onu_ids', ids)} />}
+              {!usaPon && esOnu && sedeId && (
+                <OnuCantidadConCodigos sedeId={sedeId} productoId={item.producto_id} cantidad={item.cantidad} stockTotalDisp={stockDisp} onuIds={item.onu_ids} onChangeOnuIds={ids => update(idx, 'onu_ids', ids)} verbo={verbo} />
+              )}
+              {excede && <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600, paddingLeft: 2 }}>Excede el stock disponible</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ItemsListRequerimiento({ stock, items, setItems, productos = [] }) {
   const update = (idx, key, value) => setItems(items.map((it, i) => i === idx ? { ...it, [key]: value } : it));
   const remove = idx => setItems(items.filter((_, i) => i !== idx));
@@ -487,9 +613,12 @@ export default function AdminAlmacenInventario() {
 
   const directaM = useMutation({
     mutationFn: () => {
-      const itemsValidos = directa.items.filter(i => { const prod = stock.find(s => String(s.producto_id) === String(i.producto_id)); const esOnu = isOnuProduct(prod || {}); return i.producto_id && (esOnu ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0); });
-      const onuIds = itemsValidos.flatMap(i => i.onu_ids || []);
-      const itemsSoloNormales = itemsValidos.filter(i => !isOnuProduct(stock.find(s => String(s.producto_id) === String(i.producto_id)) || {})).map(({ onu_ids, ...rest }) => rest);
+      // ONU: cantidad = sin código + códigos elegidos (el backend resta los onu_ids del total)
+      const itemsNormales = directa.items.filter(i => infoItemEnvio(i, stock).valido);
+      const onuIds = itemsNormales.flatMap(i => infoItemEnvio(i, stock).esOnu ? (i.onu_ids || []) : []);
+      const itemsSoloNormales = itemsNormales
+        .filter(i => { const f = infoItemEnvio(i, stock); return f.esOnu ? f.sinCodigo > 0 : true; })
+        .map(({ onu_ids, modo_onu, sin_max, ...rest }) => ({ ...rest, cantidad: infoItemEnvio({ ...rest, onu_ids, modo_onu }, stock).total }));
       const ahora = new Date();
       const horaActual = `T${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}:${String(ahora.getSeconds()).padStart(2,'0')}`;
       return stockApi.salidaDirecta({
@@ -567,15 +696,12 @@ export default function AdminAlmacenInventario() {
 
   const enviarStockM = useMutation({
     mutationFn: () => {
-      const itemsNormales = envio.items.filter(i => {
-        const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
-        const esOnu = isOnuProduct(prod || {});
-        return i.producto_id && (esOnu ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0);
-      });
-      const onuIds = itemsNormales.flatMap(i => i.onu_ids || []);
+      // ONU: cantidad = sin código + códigos elegidos (el backend resta los onu_ids del total)
+      const itemsNormales = envio.items.filter(i => infoItemEnvio(i, stock).valido);
+      const onuIds = itemsNormales.flatMap(i => infoItemEnvio(i, stock).esOnu ? (i.onu_ids || []) : []);
       const itemsSoloNormales = itemsNormales
-        .filter(i => !(isOnuProduct(stock.find(s => String(s.producto_id) === String(i.producto_id)) || {})))
-        .map(({ onu_ids, ...rest }) => rest);
+        .filter(i => { const f = infoItemEnvio(i, stock); return f.esOnu ? f.sinCodigo > 0 : true; })
+        .map(({ onu_ids, modo_onu, sin_max, ...rest }) => ({ ...rest, cantidad: infoItemEnvio({ ...rest, onu_ids, modo_onu }, stock).total }));
       return stockApi.enviarSede({
         sedeId,
         sedeDestinoId: envio.sede_destino_id,
@@ -1064,13 +1190,13 @@ export default function AdminAlmacenInventario() {
         <UIModal open={true} onClose={() => setModal(null)} title="Salida directa de stock">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <ProductSearch label="Buscar producto" search={directaSearch} setSearch={setDirectaSearch} products={stock.filter(s => s.cantidad > 0)} selected={directa.items} onAdd={p => setDirecta({ ...directa, items: [...directa.items, { producto_id: String(p.producto_id), cantidad: '', onu_ids: [] }] })} />
-            <ItemsList stock={stock} items={directa.items} setItems={items => setDirecta({ ...directa, items })} sedeId={sedeId} />
+            <ItemsListEnvio stock={stock} items={directa.items} setItems={items => setDirecta({ ...directa, items })} sedeId={sedeId} verbo="sacar" />
             <div>
               <label style={{ display: 'block', marginBottom: 5, fontSize: 12, color: 'var(--txt-2)', fontWeight: 500 }}>Fecha de salida</label>
               <input type="date" value={directa.fecha} onChange={e => setDirecta({ ...directa, fecha: e.target.value })} style={dateInputStyle} />
             </div>
             <Input label="Motivo / comentario" value={directa.comentario} onChange={e => setDirecta({ ...directa, comentario: e.target.value })} />
-            <Btn onClick={() => directaM.mutate()} disabled={!directa.comentario || directa.items.length === 0 || directaM.isPending} icon={<Check size={15} />}>Confirmar salida</Btn>
+            <Btn onClick={() => directaM.mutate()} disabled={!directa.comentario || !directa.items.some(i => infoItemEnvio(i, stock).valido) || directa.items.some(i => i.producto_id && !infoItemEnvio(i, stock).valido) || directaM.isPending} icon={<Check size={15} />}>Confirmar salida</Btn>
           </div>
         </UIModal>
       )}
@@ -1166,30 +1292,24 @@ export default function AdminAlmacenInventario() {
             <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 16, paddingBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>Productos a enviar</div>
               <ProductSearch label="Buscar producto" search={envioSearch} setSearch={setEnvioSearch} products={stock.filter(s => s.cantidad > 0)} selected={envio.items} onAdd={p => setEnvio({ ...envio, items: [...envio.items, { producto_id: String(p.producto_id), cantidad: '' }] })} />
-              <ItemsList
+              <ItemsListEnvio
                 stock={stock}
                 items={envio.items}
                 setItems={items => setEnvio({ ...envio, items })}
-                showDisponible={true}
                 sedeId={sedeId}
               />
             </div>
             <div style={{ marginBottom: 16 }}>
               <Input label="Comentario (opcional)" value={envio.comentario} onChange={e => setEnvio({ ...envio, comentario: e.target.value })} placeholder="Instrucciones, observaciones..." />
             </div>
-            {envio.items.some(i => {
-                const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
-                const esOnu = isOnuProduct(prod || {});
-                return i.producto_id && (esOnu ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0);
-              }) && (
+            {envio.items.some(i => infoItemEnvio(i, stock).total > 0) && (
               <div style={{ padding: '10px 14px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 10, marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <Package size={15} style={{ color: '#2563EB', marginTop: 1, flexShrink: 0 }} />
                 <div style={{ fontSize: 12, color: 'var(--txt-2)', lineHeight: 1.6 }}>
                   <strong style={{ color: 'var(--txt)', display: 'block', marginBottom: 2 }}>Resumen del envío</strong>
                   {envio.items.map((i, idx) => {
                     const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
-                    const esOnu = isOnuProduct(prod || {});
-                    const cant = esOnu ? (i.onu_ids || []).length : Number(i.cantidad);
+                    const cant = infoItemEnvio(i, stock).total;
                     if (cant <= 0) return null;
                     return <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 10 }}>
                       <span style={{ fontWeight: 700, color: '#2563EB', fontFamily: 'var(--font-mono)' }}>{cant}×</span>{prod?.producto || '?'}
@@ -1203,19 +1323,11 @@ export default function AdminAlmacenInventario() {
               <Btn onClick={() => enviarStockM.mutate()} disabled={
                 !envio.sede_destino_id ||
                 !envio.guia.trim() ||
-                !envio.items.some(i => {
-                  const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
-                  const esOnu = isOnuProduct(prod || {});
-                  return i.producto_id && (esOnu ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0);
-                }) ||
+                !envio.items.some(i => infoItemEnvio(i, stock).valido) ||
+                envio.items.some(i => i.producto_id && !infoItemEnvio(i, stock).valido) ||
                 enviarStockM.isPending
               } icon={<Send size={15} />} style={{ fontWeight: 700, background: '#185FA5', color: '#fff', border: 'none' }}>
-                Confirmar envío ({envio.items.reduce((total, i) => {
-                  const prod = stock.find(s => String(s.producto_id) === String(i.producto_id));
-                  const esOnu = isOnuProduct(prod || {});
-                  const cant = esOnu ? (i.onu_ids || []).length : Number(i.cantidad) || 0;
-                  return total + cant;
-                }, 0)} productos)
+                Confirmar envío ({envio.items.reduce((total, i) => total + infoItemEnvio(i, stock).total, 0)} productos)
               </Btn>
             </div>
           </div>

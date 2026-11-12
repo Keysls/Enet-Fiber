@@ -202,67 +202,6 @@ function isOnuProduct(p) {
 }
 
 /**
- * Panel de selección de ONUs por código PON — usado dentro de ItemsEditorEnvio
- * cuando la cantidad ingresada para un producto ONU supera las unidades sin
- * código disponibles. Permite elegir EXACTAMENTE cuáles códigos completan
- * la diferencia, en vez de que el backend decida automáticamente cuáles mover.
- */
-function OnuPanelInline({ sedeId, productoId, selectedIds, onChange, faltantes }) {
-  const [filter, setFilter] = useState('');
-  const onusQ = useQuery({
-    queryKey: ['onus-panel-inline-noc', sedeId, productoId],
-    enabled: Boolean(sedeId && productoId),
-    queryFn: () => onusInventarioApi.disponibles({ sedeId, producto_id: productoId }).then(r => r.data),
-  });
-  const onus = (onusQ.data || []).filter(o => !filter || (o.codigo_pon || '').toLowerCase().includes(filter.toLowerCase()));
-  const selected = selectedIds.map(String);
-  const completo = selected.length === faltantes;
-  const excedido = selected.length > faltantes;
-  const toggle = (id) => {
-    const s = String(id);
-    if (selected.includes(s)) { onChange(selected.filter(v => v !== s)); return; }
-    if (selected.length >= faltantes) return; // no permitir elegir más de lo necesario
-    onChange([...selected, s]);
-  };
-  return (
-    <div style={{ marginTop: 6, padding: '10px 12px', border: `1px solid ${completo ? 'var(--green)' : 'var(--border)'}`, borderRadius: 8, background: 'var(--bg-2)' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: completo ? 'var(--green)' : 'var(--txt-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
-        {completo ? '✓ ' : ''}Selecciona {faltantes} código{faltantes !== 1 ? 's' : ''} PON para completar la cantidad ({selected.length}/{faltantes})
-      </div>
-      <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filtrar por código PON..."
-        style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-3)', color: 'var(--txt)', fontSize: 12, marginBottom: 8 }} />
-      {onusQ.isLoading && <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>Cargando...</div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {onus.map(onu => {
-          const isSel = selected.includes(String(onu.id));
-          const disabledByLimit = !isSel && selected.length >= faltantes;
-          return (
-            <button key={onu.id} type="button" onClick={() => toggle(onu.id)} disabled={disabledByLimit}
-              style={{
-                padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
-                cursor: disabledByLimit ? 'not-allowed' : 'pointer',
-                border: isSel ? 'none' : '1px solid var(--border)',
-                background: isSel ? 'var(--accent)' : 'var(--bg-3)',
-                color: isSel ? '#fff' : (disabledByLimit ? 'var(--txt-3)' : 'var(--txt)'),
-                opacity: disabledByLimit ? 0.5 : 1,
-                transition: 'all 0.12s',
-              }}>
-              {onu.codigo_pon}
-            </button>
-          );
-        })}
-        {!onusQ.isLoading && onus.length === 0 && <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>Sin ONUs con código disponibles.</div>}
-      </div>
-      {excedido && (
-        <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6, fontWeight: 600 }}>
-          ⚠ Seleccionaste más códigos de los necesarios
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * Panel de selección de ONUs por código PON — modo "Por código PON" directo,
  * sin límite de cantidad. El operador elige libremente cuántas y cuáles
  * unidades codificadas quiere mover, sin pasar por un número de cantidad.
@@ -306,33 +245,63 @@ function OnuPanelDirecto({ sedeId, productoId, selectedIds, onChange }) {
 
 
 /**
- * Calcula cuántas unidades sin código hay disponibles para completar una
- * cantidad. FUENTE DE VERDAD: StockSede.cantidad (stockTotalDisp, pasado por
- * el padre) menos las filas Onu CON código que ya existen para ese producto
- * en esa sede. No se puede inferir "sin código" contando filas Onu con
- * codigoPon: null, porque el stock que entra por cantidad (entradaStock,
- * asignarItems genéricos) NUNCA crea una fila Onu — solo incrementa el
- * número. Las filas Onu solo existen para unidades que en algún momento
- * se codificaron explícitamente (retiro con código, o registro manual).
+ * Disponibilidad de una ONU en la sede origen. FUENTE DE VERDAD: StockSede.cantidad
+ * (stockTotalDisp, pasado por el padre) menos las filas Onu CON código disponibles.
+ * No se puede contar filas Onu con codigoPon null: el stock que entra por cantidad
+ * NUNCA crea fila Onu, solo incrementa el número. El backend valida lo mismo.
  */
-function OnuCantidadConCodigos({ sedeId, productoId, cantidad, stockTotalDisp, onuIds, onChangeOnuIds }) {
-  const conCodigoQ = useQuery({
-    queryKey: ['onus-con-codigo-noc', sedeId, productoId],
+function useOnuDisponibilidad(sedeId, productoId, stockTotalDisp) {
+  const q = useQuery({
+    queryKey: ['onus-panel-inline-noc', sedeId, productoId],
     enabled: Boolean(sedeId && productoId),
     queryFn: () => onusInventarioApi.disponibles({ sedeId, producto_id: productoId }).then(r => r.data),
   });
-  const conCodigo = (conCodigoQ.data || []).length;
+  const conCodigo = (q.data || []).length;
   const sinCodigo = Math.max(0, (Number(stockTotalDisp) || 0) - conCodigo);
-  const cant = Number(cantidad) || 0;
-  const faltantes = Math.max(0, cant - sinCodigo);
+  return { isLoading: q.isLoading, conCodigo, sinCodigo };
+}
 
-  // Si la cantidad ingresada ya no requiere códigos (cabe en las sin código),
-  // limpiar cualquier selección previa de onu_ids para ese item.
+/**
+ * Modo "Por cantidad" de una ONU: el número = SOLO ONUs sin código. No puede
+ * pasar de las sin código disponibles. Publica ese máximo en item.sin_max
+ * para que el botón Confirmar pueda validarlo.
+ */
+function CantidadOnuInput({ sedeId, productoId, stockDisp, item, idx, patch }) {
+  const { isLoading, sinCodigo } = useOnuDisponibilidad(sedeId, productoId, stockDisp);
+  const cant = Number(item.cantidad) || 0;
   useEffect(() => {
-    if (faltantes === 0 && (onuIds || []).length > 0) onChangeOnuIds([]);
-  }, [faltantes]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isLoading) return;
+    const cambios = {};
+    if (item.sin_max !== sinCodigo) cambios.sin_max = sinCodigo;
+    if (cant > sinCodigo) cambios.cantidad = sinCodigo > 0 ? String(sinCodigo) : '';
+    if (Object.keys(cambios).length) patch(idx, cambios);
+  }, [isLoading, sinCodigo, cant, item.sin_max]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onChange = (e) => {
+    const v = e.target.value;
+    if (v === '') { patch(idx, { cantidad: '' }); return; }
+    const n = Math.max(0, Math.floor(Number(v)) || 0);
+    patch(idx, { cantidad: String(isLoading ? n : Math.min(n, sinCodigo)) });
+  };
+  return (
+    <input
+      style={inputStyle} type="number" min="0" max={sinCodigo}
+      placeholder="Sin código" disabled={!isLoading && sinCodigo === 0}
+      title="Cantidad de ONUs SIN código a enviar"
+      value={item.cantidad} onChange={onChange}
+    />
+  );
+}
 
-  if (conCodigoQ.isLoading) {
+/**
+ * Debajo del input "sin código": disponibilidad, selección opcional de ONUs CON
+ * código (se SUMAN a la cantidad) y total del ítem.
+ */
+function OnuCantidadConCodigos({ sedeId, productoId, cantidad, stockTotalDisp, onuIds, onChangeOnuIds }) {
+  const { isLoading, conCodigo, sinCodigo } = useOnuDisponibilidad(sedeId, productoId, stockTotalDisp);
+  const cant = Number(cantidad) || 0;
+  const conSel = (onuIds || []).length;
+
+  if (isLoading) {
     return <div style={{ fontSize: 11, color: 'var(--txt-3)', paddingLeft: 2 }}>Verificando disponibilidad de códigos...</div>;
   }
 
@@ -347,17 +316,27 @@ function OnuCantidadConCodigos({ sedeId, productoId, cantidad, stockTotalDisp, o
           Con código disponibles: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--txt)' }}>{conCodigo}</strong>
         </span>
       </div>
-      {faltantes > 0 && (
-        <OnuPanelInline
-          sedeId={sedeId}
-          productoId={productoId}
-          selectedIds={onuIds || []}
-          onChange={onChangeOnuIds}
-          faltantes={faltantes}
-        />
+      {conCodigo > 0 && (
+        <OnuPanelDirecto sedeId={sedeId} productoId={productoId} selectedIds={onuIds || []} onChange={onChangeOnuIds} />
       )}
+      <div style={{ fontSize: 11, color: 'var(--txt-3)', paddingLeft: 2 }}>
+        Total a enviar: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{cant + conSel}</strong>
+        {' '}({cant} sin código + {conSel} con código)
+      </div>
     </div>
   );
+}
+
+/** Total y validez de un ítem del envío (compartido por el editor y el botón Confirmar). */
+function infoItemEnvio(i, stockList) {
+  const prod = (stockList || []).find(s => String(s.producto_id) === String(i.producto_id));
+  const esOnu = isOnuProduct(prod || {});
+  const usaPon = esOnu && (i.modo_onu || 'cantidad') === 'pon';
+  const conCodigo = (i.onu_ids || []).length;
+  const sinCodigo = usaPon ? 0 : (Number(i.cantidad) || 0);
+  const excedeSin = esOnu && !usaPon && i.sin_max != null && sinCodigo > i.sin_max;
+  const total = sinCodigo + conCodigo;
+  return { esOnu, usaPon, sinCodigo, conCodigo, total, valido: Boolean(i.producto_id) && total > 0 && !excedeSin };
 }
 
 /**
@@ -374,20 +353,22 @@ function OnuCantidadConCodigos({ sedeId, productoId, cantidad, stockTotalDisp, o
 function ItemsEditorEnvio({ stock, items, setItems, productosList, sedeId }) {
   const [errorDuplicado, setErrorDuplicado] = useState('');
 
-  const add    = () => setItems([...items, { producto_id: '', cantidad: '', onu_ids: [] }]);
+  const add    = () => setItems([...items, { producto_id: '', cantidad: '', onu_ids: [], sin_max: null }]);
   const remove = idx => { setItems(items.filter((_, i) => i !== idx)); setErrorDuplicado(''); };
+
+  const patch = (idx, cambios) => setItems(items.map((it, i) => i === idx ? { ...it, ...cambios } : it));
 
   const update = (idx, key, value) => {
     if (key === 'producto_id' && value) {
       const yaExiste = items.some((it, i) => i !== idx && String(it.producto_id) === String(value));
       if (yaExiste) {
         setErrorDuplicado('Este producto ya fue agregado. Cambia la cantidad en la fila existente.');
-        setItems(items.map((it, i) => i === idx ? { ...it, producto_id: '', cantidad: '', onu_ids: [] } : it));
+        setItems(items.map((it, i) => i === idx ? { ...it, producto_id: '', cantidad: '', onu_ids: [], sin_max: null } : it));
         return;
       }
     }
     setErrorDuplicado('');
-    setItems(items.map((it, i) => i === idx ? { ...it, [key]: value } : it));
+    setItems(items.map((it, i) => i === idx ? { ...it, [key]: value, ...(key === 'producto_id' ? { sin_max: null, onu_ids: [] } : {}) } : it));
   };
 
   return (
@@ -402,7 +383,8 @@ function ItemsEditorEnvio({ stock, items, setItems, productosList, sedeId }) {
           const usaPon = esOnu && modoOnu === 'pon';
           const cantIngresada = Number(item.cantidad) || 0;
           const stockDisp = prod?.cantidad || 0;
-          const excede = !usaPon && cantIngresada > stockDisp && stockDisp > 0;
+          const totalIngresado = cantIngresada + (esOnu ? (item.onu_ids || []).length : 0);
+          const excede = !usaPon && totalIngresado > stockDisp && stockDisp > 0;
           return (
             <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px auto', gap: 8, alignItems: 'center' }}>
@@ -416,6 +398,8 @@ function ItemsEditorEnvio({ stock, items, setItems, productosList, sedeId }) {
                   ? <div style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 6, padding: '0 8px', background: 'var(--bg-3)', fontSize: 13, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
                       {(item.onu_ids || []).length} ONU{(item.onu_ids || []).length !== 1 ? 's' : ''}
                     </div>
+                  : esOnu && sedeId && item.producto_id
+                  ? <CantidadOnuInput sedeId={sedeId} productoId={item.producto_id} stockDisp={stockDisp} item={item} idx={idx} patch={patch} />
                   : <input
                       style={{ ...inputStyle, borderColor: excede ? 'var(--red)' : undefined }}
                       type="number" min="1"
@@ -445,7 +429,7 @@ function ItemsEditorEnvio({ stock, items, setItems, productosList, sedeId }) {
 
               {/* Modo "Por cantidad" en producto ONU: si la cantidad supera las
                   unidades sin código, pide completar la diferencia con códigos */}
-              {!usaPon && esOnu && sedeId && item.producto_id && cantIngresada > 0 && (
+              {!usaPon && esOnu && sedeId && item.producto_id && (
                 <OnuCantidadConCodigos
                   sedeId={sedeId}
                   productoId={item.producto_id}
@@ -854,23 +838,19 @@ export default function AlmacenInventario() {
 const envioM = useMutation({
     mutationFn: () => {
       // Modo "pon" puro: el item no lleva cantidad, solo onu_ids específicos.
-      // Modo "cantidad": el item lleva cantidad, y puede traer onu_ids
-      // adicionales para completar la diferencia cuando la cantidad pedida
-      // superó las unidades sin código disponibles — el backend resta esos
-      // onu_ids de la cantidad total automáticamente (cantidadTotal - yaExplicitas).
+      // Modo "cantidad": el número son ONUs SIN código; puede sumar onu_ids
+      // (con código). Se envía el total y el backend resta los onu_ids.
       const usaPonItem = (i) => {
         const prod = (stockQ.data || []).find(s => String(s.producto_id) === String(i.producto_id));
         return isOnuProduct(prod || {}) && (i.modo_onu || 'cantidad') === 'pon';
       };
-      const itemsValidos = envio.items.filter(i =>
-        i.producto_id && (usaPonItem(i) ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0)
-      );
-      const onuIdsPuros   = itemsValidos.filter(i => usaPonItem(i)).flatMap(i => i.onu_ids || []);
-      const onuIdsCompletando = itemsValidos.filter(i => !usaPonItem(i)).flatMap(i => i.onu_ids || []);
-      const onuIds = [...onuIdsPuros, ...onuIdsCompletando];
+      // Cantidad por ítem = sin código + códigos elegidos (total); el backend
+      // resta los onu_ids de ese total para saber cuántas son sin código.
+      const itemsValidos = envio.items.filter(i => infoItemEnvio(i, stockQ.data).valido);
+      const onuIds = itemsValidos.flatMap(i => i.onu_ids || []);
       const itemsSoloNormales = itemsValidos
-        .filter(i => !usaPonItem(i))
-        .map(({ onu_ids, modo_onu, ...rest }) => rest);
+        .filter(i => !usaPonItem(i) && infoItemEnvio(i, stockQ.data).sinCodigo > 0)
+        .map(({ onu_ids, modo_onu, sin_max, ...rest }) => ({ ...rest, cantidad: infoItemEnvio({ ...rest, onu_ids }, stockQ.data).total }));
       return stockApi.enviarSede({
         ...envio,
         sedeId: sedeOrigenId,
@@ -1200,11 +1180,10 @@ const handleExportar = async () => {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
             <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
             <Btn variant="primary"
-              disabled={!sedeOrigenId || !envio.sede_destino_id || !envio.guia?.trim() || !envio.items.some(i => {
-                const prod = (stockQ.data || []).find(s => String(s.producto_id) === String(i.producto_id));
-                const usaPon = isOnuProduct(prod || {}) && (i.modo_onu || 'cantidad') === 'pon';
-                return i.producto_id && (usaPon ? (i.onu_ids || []).length > 0 : Number(i.cantidad) > 0);
-              }) || envioM.isPending}
+              disabled={!sedeOrigenId || !envio.sede_destino_id || !envio.guia?.trim()
+                || !envio.items.some(i => infoItemEnvio(i, stockQ.data).valido)
+                || envio.items.some(i => i.producto_id && !infoItemEnvio(i, stockQ.data).valido)
+                || envioM.isPending}
               loading={envioM.isPending} onClick={() => envioM.mutate()}>
               Confirmar envío
             </Btn>

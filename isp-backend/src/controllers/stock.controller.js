@@ -16,12 +16,19 @@ const uniqueNumericIds = (values = []) => {
   return [...new Set(ids)];
 };
 
+// Error de negocio: el handler global lo responde como 400 con { error }.
+const errorNegocio = (mensaje) => {
+  const err = new Error(mensaje);
+  err.status = 400;
+  return err;
+};
+
 const decrementStockSede = async (tx, { sedeId, productoId, cantidad }) => {
   const result = await tx.stockSede.updateMany({
     where: { sedeId, productoId, cantidad: { gte: cantidad } },
     data: { cantidad: { decrement: cantidad } },
   });
-  if (result.count !== 1) throw new Error(`Stock insuficiente para producto ID ${productoId}`);
+  if (result.count !== 1) throw errorNegocio(`Stock insuficiente para producto ID ${productoId}`);
 };
 
 const decrementProductoTotal = async (tx, { productoId, cantidad }) => {
@@ -29,7 +36,33 @@ const decrementProductoTotal = async (tx, { productoId, cantidad }) => {
     where: { id: productoId, stockTotal: { gte: cantidad } },
     data: { stockTotal: { decrement: cantidad } },
   });
-  if (result.count !== 1) throw new Error(`Stock global insuficiente para producto ID ${productoId}`);
+  if (result.count !== 1) throw errorNegocio(`Stock global insuficiente para producto ID ${productoId}`);
+};
+
+// Productos ONU (los que tienen filas Onu): las unidades "sin código" son el stock
+// numérico (StockSede) menos las ONUs con código aún disponibles. Si piden más sin
+// código de las que hay, hay que elegir el resto por código. Bloquea la fila de
+// stock (FOR UPDATE) para que dos operaciones simultáneas no pasen la validación a
+// la vez (la segunda espera y ve el stock ya descontado). Sin filas Onu no hace nada.
+const validarMaxSinCodigoOnu = async (tx, { sedeId, productoId, cantidad }) => {
+  const filasOnu = await tx.onu.count({ where: { productoId } });
+  if (filasOnu === 0) return;
+  await tx.$queryRaw`SELECT 1 FROM stock_sede WHERE sede_id = ${sedeId} AND producto_id = ${productoId} FOR UPDATE`;
+  const stockOrigen = await tx.stockSede.findUnique({
+    where: { sedeId_productoId: { sedeId, productoId } },
+    select: { cantidad: true },
+  });
+  const conCodigoDisp = await tx.onu.count({
+    where: {
+      productoId, sedeId, codigoPon: { not: null },
+      tecnicoId: null, cliente: null, salidaDirecta: false,
+    },
+  });
+  const sinCodigoDisp = Math.max(0, (stockOrigen?.cantidad || 0) - conCodigoDisp);
+  if (cantidad > sinCodigoDisp) {
+    const prod = await tx.producto.findUnique({ where: { id: productoId }, select: { nombre: true } });
+    throw errorNegocio(`Solo hay ${sinCodigoDisp} ONU(s) sin código disponibles de ${prod?.nombre || `producto ${productoId}`}; elige las demás por código`);
+  }
 };
 
 const getSedeId = (req) => {
@@ -338,26 +371,22 @@ const salidaDirecta = async (req, res, next) => {
     }
 
     await prisma.$transaction(async (tx) => {
-      for (const item of items) {
-        const productoId = Number(item.producto_id ?? item.productoId);
-        const cantidad = toInt(item.cantidad);
-        if (!productoId || cantidad <= 0) throw new Error('Producto o cantidad invalidos');
-
-        await decrementStockSede(tx, { sedeId, productoId, cantidad });
-        await decrementProductoTotal(tx, { productoId, cantidad });
-        await tx.salidaDirecta.create({
-          data: { productoId, sedeId, cantidad, comentario, registradoPor: String(req.usuario.id) },
-        });
-      }
-
+      // ── ONUs específicas por código PON (elegidas explícitamente) ──
+      // Se procesan PRIMERO. La cantidad de cada item es el TOTAL a sacar del
+      // producto (sin código + códigos elegidos); aquí se restan las explícitas.
+      // Cada ONU se reclama con un updateMany condicionado: si otra operación la
+      // tomó en paralelo (o tiene cliente/técnico/salida directa) count !== 1.
+      const onusExplicitasPorProducto = new Map();
       for (const onuId of onuIds) {
-        // Disponibilidad: sin tecnicoId y sin salidaDirecta
-        const onu = await tx.onu.findFirst({
-          where: { id: Number(onuId), sedeId, tecnicoId: null, salidaDirecta: false },
-        });
-        if (!onu) throw new Error(`ONU ID ${onuId} no disponible`);
+        const onu = await tx.onu.findUnique({ where: { id: Number(onuId) } });
+        if (!onu) throw errorNegocio(`ONU ${onuId} ya no está disponible`);
 
-        await tx.onu.update({ where: { id: onu.id }, data: { salidaDirecta: true } });
+        const reclamo = await tx.onu.updateMany({
+          where: { id: onu.id, sedeId, tecnicoId: null, cliente: null, salidaDirecta: false },
+          data: { salidaDirecta: true },
+        });
+        if (reclamo.count !== 1) throw errorNegocio(`ONU ${onu.codigoPon || onu.id} ya no está disponible`);
+
         await decrementStockSede(tx, { sedeId, productoId: onu.productoId, cantidad: 1 });
         await decrementProductoTotal(tx, { productoId: onu.productoId, cantidad: 1 });
         const salida = await tx.salidaDirecta.create({
@@ -365,6 +394,57 @@ const salidaDirecta = async (req, res, next) => {
         });
         await anotarMovimiento(tx, onu, {
           tipo: 'SALIDA_DIRECTA', sedeId, referencia: salida.id, detalle: comentario, usuarioId: req.usuario.id,
+        });
+        onusExplicitasPorProducto.set(onu.productoId, (onusExplicitasPorProducto.get(onu.productoId) || 0) + 1);
+      }
+
+      // ── Items por cantidad ──
+      const normalized = new Map();
+      for (const item of items) {
+        const productoId = Number(item.producto_id ?? item.productoId);
+        const cantidad = toInt(item.cantidad);
+        if (!productoId || cantidad <= 0) throw errorNegocio('Producto o cantidad invalidos');
+        normalized.set(productoId, (normalized.get(productoId) || 0) + cantidad);
+      }
+
+      for (const [productoId, cantidadTotal] of normalized.entries()) {
+        const yaExplicitas = onusExplicitasPorProducto.get(productoId) || 0;
+        const cantidad = cantidadTotal - yaExplicitas; // unidades SIN código pedidas
+        if (cantidad < 0) throw errorNegocio(`Cantidad inválida para producto ID ${productoId}: hay más códigos seleccionados que la cantidad total`);
+        if (cantidad === 0) continue;
+
+        // Productos ONU: máximo sin código = stock - ONUs con código disponibles.
+        await validarMaxSinCodigoOnu(tx, { sedeId, productoId, cantidad });
+
+        // Marcar como salida directa las filas Onu sin código (si existen), cada una
+        // con updateMany condicionado; el resto es stock numérico sin fila.
+        let marcadas = 0;
+        const probadas = new Set();
+        while (marcadas < cantidad) {
+          const candidatas = await tx.onu.findMany({
+            where: {
+              productoId, sedeId, codigoPon: null,
+              tecnicoId: null, cliente: null, salidaDirecta: false,
+              ...(probadas.size && { id: { notIn: [...probadas] } }),
+            },
+            select: { id: true },
+            take: cantidad - marcadas,
+          });
+          if (candidatas.length === 0) break;
+          for (const c of candidatas) {
+            probadas.add(c.id);
+            const r = await tx.onu.updateMany({
+              where: { id: c.id, sedeId, tecnicoId: null, cliente: null, salidaDirecta: false },
+              data: { salidaDirecta: true },
+            });
+            if (r.count === 1) marcadas++;
+          }
+        }
+
+        await decrementStockSede(tx, { sedeId, productoId, cantidad });
+        await decrementProductoTotal(tx, { productoId, cantidad });
+        await tx.salidaDirecta.create({
+          data: { productoId, sedeId, cantidad, comentario, registradoPor: String(req.usuario.id) },
         });
       }
     });
@@ -407,7 +487,7 @@ const enviarProductosSede = async (req, res, next) => {
 
     await prisma.$transaction(async (tx) => {
       const destino = await tx.sede.findUnique({ where: { id: sedeDestinoId } });
-      if (!destino || !destino.activo) throw new Error('Sede destino no encontrada o inactiva');
+      if (!destino || !destino.activo) throw errorNegocio('Sede destino no encontrada o inactiva');
 
       const envio = await tx.envio.create({
         data: {
@@ -422,84 +502,82 @@ const enviarProductosSede = async (req, res, next) => {
       });
 
       // ── ONUs específicas por código PON (elegidas explícitamente) ──
-      // Se procesan PRIMERO: si el usuario ya eligió códigos concretos para
-      // completar una cantidad (ver bloque de items abajo), el frontend ya
-      // restó esas unidades de la cantidad genérica antes de enviar el request.
+      // Se procesan PRIMERO. La cantidad de cada item es el TOTAL a enviar del
+      // producto (sin código + códigos elegidos); aquí se restan las explícitas.
+      // Cada ONU se reclama con un updateMany condicionado: si otro envío la
+      // tomó en paralelo (o tiene cliente/técnico/salida directa) count !== 1.
+      const onusExplicitasPorProducto = new Map();
       for (const onuId of onuIds) {
-        const onu = await tx.onu.findFirst({
-          where: { id: Number(onuId), sedeId: sedeOrigenId, tecnicoId: null, salidaDirecta: false },
-        });
-        if (!onu) throw new Error(`ONU ID ${onuId} no disponible`);
+        const onu = await tx.onu.findUnique({ where: { id: Number(onuId) } });
+        if (!onu) throw errorNegocio(`ONU ${onuId} ya no está disponible`);
 
-        // Mover la ONU a la sede destino y MARCARLA como "en tránsito" con el envioId.
-        // Esto permite identificar la ONU exacta al cancelar o confirmar,
-        // sin importar si la sede destino tiene otras ONUs del mismo productoId.
-        await tx.onu.update({
-          where: { id: onu.id },
+        const reclamo = await tx.onu.updateMany({
+          where: {
+            id: onu.id, sedeId: sedeOrigenId, tecnicoId: null, cliente: null, salidaDirecta: false,
+          },
+          // Mover la ONU a la sede destino y MARCARLA como "en tránsito" con el envioId,
+          // para identificarla al cancelar o confirmar.
           data: { sedeId: sedeDestinoId, cliente: `envio_pendiente#${envio.id}` },
         });
+        if (reclamo.count !== 1) throw errorNegocio(`ONU ${onu.codigoPon || onu.id} ya no está disponible`);
+
         await anotarMovimiento(tx, onu, {
           tipo: 'ENVIO', sedeId: sedeOrigenId, sedeDestinoId, referencia: envio.id,
           detalle: [`Guía ${guia}`, comentario].filter(Boolean).join(' · '), usuarioId: req.usuario.id,
         });
 
-        // Decrementar stock en sede origen
         await decrementStockSede(tx, { sedeId: sedeOrigenId, productoId: onu.productoId, cantidad: 1 });
-
-        // Registrar en el detalle del envío
         await tx.envioDetalle.create({
           data: { envioId: envio.id, productoId: onu.productoId, cantidad: 1 },
         });
+        onusExplicitasPorProducto.set(onu.productoId, (onusExplicitasPorProducto.get(onu.productoId) || 0) + 1);
       }
 
-      // ── Items normales por cantidad ──
+      // ── Items por cantidad ──
       const normalized = new Map();
       for (const item of items) {
         const productoId = Number(item.producto_id ?? item.productoId);
         const cantidad = toInt(item.cantidad);
-        if (!productoId || cantidad <= 0) throw new Error('Producto o cantidad invalidos');
+        if (!productoId || cantidad <= 0) throw errorNegocio('Producto o cantidad invalidos');
         normalized.set(productoId, (normalized.get(productoId) || 0) + cantidad);
-      }
-      // Contar cuántas unidades por productoId ya se procesaron como ONU
-      // explícita arriba — para restarlas de la "cantidad total" y no duplicar.
-      const onusExplicitasPorProducto = new Map();
-      for (const onuId of onuIds) {
-        const onu = await tx.onu.findUnique({ where: { id: Number(onuId) }, select: { productoId: true } });
-        if (onu) onusExplicitasPorProducto.set(onu.productoId, (onusExplicitasPorProducto.get(onu.productoId) || 0) + 1);
       }
 
       for (const [productoId, cantidadTotal] of normalized.entries()) {
-        // cantidadTotal es lo que el usuario tipeó como TOTAL a enviar de ese
-        // producto. Si parte de ese total ya viajó como ONU explícita (onuIds),
-        // se resta aquí — el resto se completa con ONUs sin código o número puro.
         const yaExplicitas = onusExplicitasPorProducto.get(productoId) || 0;
-        const cantidad = cantidadTotal - yaExplicitas;
-        if (cantidad < 0) throw new Error(`Cantidad inválida para producto ID ${productoId}: hay más códigos seleccionados que la cantidad total`);
+        const cantidad = cantidadTotal - yaExplicitas; // unidades SIN código pedidas
+        if (cantidad < 0) throw errorNegocio(`Cantidad inválida para producto ID ${productoId}: hay más códigos seleccionados que la cantidad total`);
         if (cantidad === 0) continue;
 
-        const onusSinCodigoDisponibles = await tx.onu.findMany({
-          where: {
-            productoId,
-            sedeId:        sedeOrigenId,
-            codigoPon:     null,
-            tecnicoId:     null,
-            salidaDirecta: false,
-          },
-          select: { id: true },
-          take: cantidad,
-        });
+        // Productos ONU: máximo sin código = stock - ONUs con código disponibles.
+        await validarMaxSinCodigoOnu(tx, { sedeId: sedeOrigenId, productoId, cantidad });
 
-        for (const onuSinCodigo of onusSinCodigoDisponibles) {
-          await tx.onu.update({
-            where: { id: onuSinCodigo.id },
-            data:  { sedeId: sedeDestinoId, cliente: `envio_pendiente#${envio.id}` },
+        // Marcar en tránsito las filas Onu sin código (si existen), cada una con
+        // updateMany condicionado; si una falla por concurrencia se prueba otra.
+        let marcadas = 0;
+        const probadas = new Set();
+        while (marcadas < cantidad) {
+          const candidatas = await tx.onu.findMany({
+            where: {
+              productoId, sedeId: sedeOrigenId, codigoPon: null,
+              tecnicoId: null, cliente: null, salidaDirecta: false,
+              ...(probadas.size && { id: { notIn: [...probadas] } }),
+            },
+            select: { id: true },
+            take: cantidad - marcadas,
           });
+          if (candidatas.length === 0) break; // el resto es stock numérico sin fila
+          for (const c of candidatas) {
+            probadas.add(c.id);
+            const r = await tx.onu.updateMany({
+              where: { id: c.id, sedeId: sedeOrigenId, tecnicoId: null, cliente: null, salidaDirecta: false },
+              data: { sedeId: sedeDestinoId, cliente: `envio_pendiente#${envio.id}` },
+            });
+            if (r.count === 1) marcadas++;
+          }
         }
 
-        // El número de StockSede SIEMPRE se mueve por la cantidad total pedida
-        // (sea o no haya filas Onu detrás) — el origen se descuenta ahora; el
-        // destino solo se confirma en confirmarEnvio, nunca aquí, para permitir
-        // corregir el conteo si lo que llega físicamente no coincide.
+        // El origen se descuenta ahora por la cantidad sin código; el destino
+        // solo se confirma en confirmarEnvio.
         await decrementStockSede(tx, { sedeId: sedeOrigenId, productoId, cantidad });
         await tx.envioDetalle.create({
           data: { envioId: envio.id, productoId, cantidad },
