@@ -1,6 +1,16 @@
 const jwt    = require('jsonwebtoken');
 const prisma = require('../utils/prisma');
 
+// Únicas escrituras que puede hacer un GERENTE (su propia sesión y cuenta)
+const ESCRITURAS_PERMITIDAS_GERENTE = new Set([
+  'POST /api/auth/logout',
+  'PATCH /api/auth/cambiar-password',
+  'POST /api/auth/2fa/generar',
+  'POST /api/auth/2fa/activar',
+  'POST /api/auth/2fa/desactivar',
+  'PATCH /api/usuarios/perfil',
+]);
+
 // ── Verifica JWT y adjunta el usuario al request ──────────────
 const authMiddleware = async (req, res, next) => {
   try {
@@ -24,6 +34,14 @@ const authMiddleware = async (req, res, next) => {
 
     if (!sesion.usuario.activo) {
       return res.status(401).json({ error: 'Usuario desactivado' });
+    }
+
+    // GERENTE (administrador general) es solo de consulta: cualquier escritura se rechaza aquí,
+    // salvo salir de sesión y lo de su propia cuenta (contraseña, 2FA, perfil).
+    if (sesion.usuario.rol === 'GERENTE' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const ruta = req.originalUrl.split('?')[0].replace(/\/+$/, '');
+      if (!ESCRITURAS_PERMITIDAS_GERENTE.has(`${req.method} ${ruta}`))
+        return res.status(403).json({ error: 'Tu cuenta es solo de consulta' });
     }
 
     req.usuario = sesion.usuario;

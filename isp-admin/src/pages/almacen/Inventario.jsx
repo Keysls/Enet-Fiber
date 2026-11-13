@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Check, FileDown, Mail, MessageCircle, MoreHorizontal, Package, Plus, Search, Send, TrendingDown, Wifi, X } from 'lucide-react';
 import { onusApi, productosApi, stockApi, tecnicosApi, sedesApi } from '../../services/api';
 import { useAuthStore } from '../../store/auth.store';
+import { useSedeVista } from '../../hooks/useSedeVista';
 import { Card, Spinner, Btn, Input, Select, Badge, Modal as UIModal } from '../../components/ui';
 import { descargarRequerimientoExcel } from '../../utils/requerimientoExcel';
 import { hoyLocal } from '../../utils/helpers';
@@ -128,8 +129,14 @@ function categoriaBadgeStyle(cat) {
 
 function useMiSede() {
   const usuario = useAuthStore(s => s.usuario);
+  const vista = useSedeVista();
+  // Gerente: mira la sede que eligió arriba y no puede enviar stock ni cambiar nada
+  if (vista.gerente) {
+    return { usuario, gerente: true, sedeId: vista.sedeId, sedeNombre: vista.sedeNombre, puedeEnviarStock: false, esPrincipal: false };
+  }
   return {
     usuario,
+    gerente: false,
     sedeId: usuario?.sedeId,
     sedeNombre: usuario?.sede?.nombre || 'Mi sede',
     puedeEnviarStock: usuario?.sede?.puedeEnviarStock || false,
@@ -515,7 +522,7 @@ function OnuEditRow({ onu, onSave, codigosExistentes = [] }) {
 
 export default function AdminAlmacenInventario() {
   const qc = useQueryClient();
-  const { sedeId, sedeNombre, puedeEnviarStock, esPrincipal } = useMiSede();
+  const { sedeId, sedeNombre, puedeEnviarStock, esPrincipal, gerente } = useMiSede();
   const [q, setQ] = useState('');
   const qDebounced = useDebounce(q);
   const [modal, setModal] = useState(null);
@@ -560,13 +567,13 @@ export default function AdminAlmacenInventario() {
 
     placeholderData: (previousData) => previousData,
   });
-  const productosQ      = useQuery({ queryKey: ['admin-productos-visibles'], queryFn: () => productosApi.listar().then(r => r.data) });
-  const tecnicosQ       = useQuery({ queryKey: ['admin-tecnicos-almacen'], queryFn: () => tecnicosApi.listar().then(r => r.data) });
+  const productosQ      = useQuery({ queryKey: ['admin-productos-visibles'], enabled: !gerente, queryFn: () => productosApi.listar().then(r => r.data) });
+  const tecnicosQ       = useQuery({ queryKey: ['admin-tecnicos-almacen'], enabled: !gerente, queryFn: () => tecnicosApi.listar().then(r => r.data) });
   const onusExistentesQ = useQuery({ queryKey: ['onus-existentes', sedeId, onuForm.producto_id], enabled: Boolean(sedeId && onuForm.producto_id), queryFn: () => onusApi.listar({ sedeId, producto_id: onuForm.producto_id, solo_disponibles: false }).then(r => r.data) });
   const enviosPendientesQ = useQuery({ queryKey: ['envios-pendientes', sedeId], enabled: Boolean(sedeId), queryFn: () => stockApi.listarEnviosPendientes({ sedeId }).then(r => r.data) });
   // BUG 3 FIX: historial de envíos enviados DESDE esta sede (incluye CANCELADOS)
   const enviosOrigenQ   = useQuery({ queryKey: ['envios-origen', sedeId], enabled: Boolean(sedeId), queryFn: () => stockApi.listarEnviosOrigen({ sedeId }).then(r => r.data) });
-  const sedesQ          = useQuery({ queryKey: ['sedes-para-envio'], queryFn: () => sedesApi.listarParaEnvio().then(r => r.data) });
+  const sedesQ          = useQuery({ queryKey: ['sedes-para-envio'], enabled: !gerente, queryFn: () => sedesApi.listarParaEnvio().then(r => r.data) });
 
   const refresh = () => {
   qc.invalidateQueries({ queryKey: ['admin-stock-sede'] });
@@ -815,6 +822,16 @@ export default function AdminAlmacenInventario() {
     });
   };
 
+  // Gerente con "Todas las sedes": el stock es por sede, hay que elegir una
+  if (gerente && !sedeId) return (
+    <div style={{ padding: 28 }} className="animate-fade">
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--txt)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>Inventario</h1>
+      <div style={{ marginTop: 20, padding: '28px 20px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--txt-2)', fontSize: 14 }}>
+        Elige una sede arriba para ver su inventario
+      </div>
+    </div>
+  );
+
   if (stockQ.isLoading && !stockQ.data)   return (
     <div style={{ padding: 28, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
       <Spinner size={28} />
@@ -841,6 +858,7 @@ export default function AdminAlmacenInventario() {
         </div>
 
         <div className="ainv-toolbar-btns">
+          {!gerente && (
           <Btn
             variant="ghost"
             disabled={!sedeId}
@@ -856,7 +874,9 @@ export default function AdminAlmacenInventario() {
           >
             Registrar entrada
           </Btn>
+          )}
 
+          {!gerente && (
           <Btn
             onClick={() => { setAsignacion({ tecnico_id: '', comentario: '', items: [], onu_ids: [] }); setAsignacionSearch(''); setModal('asignar'); }}
             icon={<Send size={15} />}
@@ -864,7 +884,14 @@ export default function AdminAlmacenInventario() {
           >
             Asignar a técnico
           </Btn>
+          )}
 
+          {gerente ? (
+            <Btn variant="ghost" disabled={rows.length === 0} onClick={exportarExcel} icon={<FileDown size={15} />}
+              style={{ background: '#fff', color: '#000', borderColor: 'var(--border-2)' }}>
+              Exportar Excel
+            </Btn>
+          ) : (
           <div className="ainv-menu-wrap" ref={menuRef}>
             <Btn
               variant="ghost"
@@ -903,6 +930,7 @@ export default function AdminAlmacenInventario() {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -917,10 +945,12 @@ export default function AdminAlmacenInventario() {
                 <span style={{ color: 'var(--txt-3)', marginLeft: 8 }}>desde <strong>{env.sedeOrigen}</strong></span>
                 <div style={{ marginTop: 4, fontSize: 12, color: 'var(--txt-3)' }}>{env.detalles?.map(d => `${d.cantidad}x ${d.producto}`).join(', ')}</div>
               </div>
+              {!gerente && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <Btn variant="ghost" onClick={() => { setEnvioSeleccionado(env); setMotivoCancelacion(''); setModal('cancelar-envio'); }}>Cancelar</Btn>
                 <Btn onClick={() => { setEnvioSeleccionado(env); setModal('confirmar-envio'); }}>Confirmar recepción</Btn>
               </div>
+              )}
             </div>
           ))}
         </div>
@@ -975,7 +1005,7 @@ export default function AdminAlmacenInventario() {
                           ? <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#FCEBEB', color: '#A32D2D' }}>Bajo stock</span>
                           : <span style={{ fontSize: 12, fontWeight: 600, color: '#3B6D11' }}>OK</span>
                         }
-                        {isOnuProduct(p) && (
+                        {isOnuProduct(p) && !gerente && (
                           <button title="Registrar ONU" onClick={() => { setOnuForm({ producto_id: String(p.producto_id), codigos_pon: [''] }); setModal('onu'); }}
                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--txt-3)' }}
                             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--accent)'; }}
@@ -1021,7 +1051,7 @@ export default function AdminAlmacenInventario() {
                     </span>
                   )}
                 </div>
-                {isOnuProduct(p) && (
+                {isOnuProduct(p) && !gerente && (
                   <Btn variant="ghost" size="sm" icon={<Wifi size={13} />} onClick={() => { setOnuForm({ producto_id: String(p.producto_id), codigos_pon: [''] }); setModal('onu'); }}>
                     Registrar ONU
                   </Btn>

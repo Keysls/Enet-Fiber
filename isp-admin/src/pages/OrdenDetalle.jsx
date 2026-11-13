@@ -176,7 +176,7 @@ export default function OrdenDetalle() {
           <p style={{ color: 'var(--txt-3)', fontSize: 12 }}>Creada {fmtFechaHora(orden.createdAt)}</p>
         </div>
         <div className="od-header-btns" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {usuario?.rol !== 'SUPERVISOR' && (
+          {!['SUPERVISOR', 'GERENTE'].includes(usuario?.rol) && (
           <select value={orden.estado} onChange={e => estadoMut.mutate(e.target.value)}
             style={{ padding: '7px 12px', background: 'var(--bg-3)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--txt)', fontSize: 12, outline: 'none' }}>
             {['PENDIENTE_NOC','PENDIENTE_TECNICO','ACEPTADA','EN_PROCESO','COMPLETADA','CANCELADA','REPROGRAMADA'].map(s => (

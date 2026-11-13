@@ -4,7 +4,7 @@ const { authMiddleware, requireRol } = require('../middleware/auth.middleware');
 
 router.use(authMiddleware);
 
-router.get   ('/',                       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.listar);
+router.get   ('/',                       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'), ctrl.listar);
 router.patch ('/marcar-todas-leidas',    requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.marcarTodasLeidas);
 router.patch ('/:id/leida',              requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.marcarLeida);
 

@@ -12,6 +12,7 @@ const {
   TIPO_LABEL,
 } = require('../utils/tipoOrden');
 const { sedesQueAtiende, filtroSedes, puedeAtender } = require('../utils/sedeApoyo');
+const { esGerente } = require('../utils/alcance');
 
 // Tipos que el NOC PUEDE completar opcionalmente (sin técnico)
 const TIPOS_NOC_OPCIONAL = ['RECONEXION_I', 'RECONEXION_D'];
@@ -212,11 +213,14 @@ const listar = async (req, res, next) => {
           ],
         }),
       };
-    } else if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') {
+    } else if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR' || rol === 'GERENTE') {
       // Panel Admin: su sede y la que apoya (filtrable a una sola con ?sedeId=)
-      const misSedes = await sedesQueAtiende(miSede);
+      // GERENTE: todas las sedes, o la que elija con ?sedeId=
+      const misSedes = esGerente(req.usuario) ? [] : await sedesQueAtiende(miSede);
       where = {
-        sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede,
+        ...(esGerente(req.usuario)
+          ? (sedeId && { sedeId })
+          : { sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede }),
         ...(estado    && { estado }),
         ...(tecnicoId && { tecnicoId }),
         ...(tipos     && { tipoOrden: { in: tipos.split(',') } }),
@@ -1011,6 +1015,8 @@ const stats = async (req, res, next) => {
       };
     } else if (rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') {
       filtro = { sedeId: await filtroSedes(miSede) };
+    } else if (rol === 'GERENTE') {
+      filtro = sedeId ? { sedeId } : {};
     }
 
     // Estados que cuentan como "pendiente" (todo lo que no está cerrado)
@@ -1030,6 +1036,7 @@ const stats = async (req, res, next) => {
         where: {
           activo: true,
           ...(rol === 'ADMIN' || rol === 'SECRETARIA' || rol === 'SUPERVISOR') && (miSede && { usuario: { sedeId: miSede } }),
+          ...(rol === 'GERENTE' && sedeId && { usuario: { sedeId } }),
         },
       }),
 
@@ -1154,8 +1161,10 @@ const reportes = async (req, res, next) => {
     // ADMIN ve su sede y, de la sede que apoya, solo lo que atendieron sus técnicos
     // (lo reportan como trabajo propio). SUPERADMIN/OPERADOR_NOC ven todo.
     const esAdmin  = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol);
+    const sedeGerente = esGerente(req.usuario) ? req.query.sedeId : undefined; // GERENTE: todas o la que elija
     const apoyadas = esAdmin ? (await sedesQueAtiende(req.usuario.sedeId)).filter(id => id !== req.usuario.sedeId) : [];
     const whereSede = {
+      ...(sedeGerente && { sedeId: sedeGerente }),
       ...(esAdmin && apoyadas.length === 0 && { sedeId: req.usuario.sedeId }),
       ...(esAdmin && apoyadas.length > 0 && {
         OR: [
@@ -1204,6 +1213,7 @@ const reportes = async (req, res, next) => {
           ...(['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) && {
             usuario: { sedeId: req.usuario.sedeId },
           }),
+          ...(sedeGerente && { usuario: { sedeId: sedeGerente } }),
         },
       }),
     ]);
@@ -1392,9 +1402,12 @@ const exportarCsv = async (req, res, next) => {
       };
     } else {
       // ADMIN / SECRETARIA: su sede y la que apoya (mismo filtro que listar)
-      const misSedes = await sedesQueAtiende(miSede);
+      // GERENTE: todas las sedes, o la que elija con ?sedeId=
+      const misSedes = esGerente(req.usuario) ? [] : await sedesQueAtiende(miSede);
       where = {
-        sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede,
+        ...(esGerente(req.usuario)
+          ? (sedeId && { sedeId })
+          : { sedeId: misSedes.length > 1 ? (sedeId && misSedes.includes(sedeId) ? sedeId : { in: misSedes }) : miSede }),
         ...(estado    && { estado }),
         ...(tecnicoId && { tecnicoId }),
         ...(tipos     && { tipoOrden: { in: tipos.split(',') } }),

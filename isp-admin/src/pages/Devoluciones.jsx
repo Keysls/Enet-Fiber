@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { stockApi } from '../services/api';
 import * as XLSX from 'xlsx';
 import { hoyLocal } from '../utils/helpers';
+import { useAuthStore } from '../store/auth.store';
+import { soloLectura } from '../utils/permisos';
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmtFecha = (iso) => {
@@ -161,6 +163,7 @@ function FilaMaterialRevision({ dev, fila, onRevisar, revisarPending }) {
 }
 
 function TablaItems({ dev, onRevisarRecojo, onRevisarDetalle, revisarPending, revisarDetallePending }) {
+  const lectura = soloLectura(useAuthStore(s => s.usuario));  // gerente: solo mira
   // Unificar detalles de material y recojos en una sola lista de filas
   const filasMaterial = (dev.detalles || []).map(d => ({
     _tipo: 'material',
@@ -220,7 +223,7 @@ function TablaItems({ dev, onRevisarRecojo, onRevisarDetalle, revisarPending, re
         <tbody>
           {filas.map(fila => {
             // Material en_revision (devolucion ya aceptada) → fila especial con inputs
-            if (fila._tipo === 'material' && fila._estadoDetalle === 'en_revision' && dev.estado === 'aprobado') {
+            if (!lectura && fila._tipo === 'material' && fila._estadoDetalle === 'en_revision' && dev.estado === 'aprobado') {
               return (
                 <FilaMaterialRevision
                   key={fila.id}
@@ -277,7 +280,7 @@ function TablaItems({ dev, onRevisarRecojo, onRevisarDetalle, revisarPending, re
                   )}
                 </td>
                 <td style={S.td}>
-                  {fila._tipo === 'recojo' && fila._estadoRecojo === 'en_revision' && dev.estado === 'aprobado' && (
+                  {!lectura && fila._tipo === 'recojo' && fila._estadoRecojo === 'en_revision' && dev.estado === 'aprobado' && (
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button
                         style={{ ...S.btn('green'), padding: '4px 10px', fontSize: 11 }}
@@ -321,6 +324,7 @@ function TablaItems({ dev, onRevisarRecojo, onRevisarDetalle, revisarPending, re
 // ── Tabla de malogrados ───────────────────────────────────────
 function TablaMalogrados() {
   const qc = useQueryClient();
+  const lectura = soloLectura(useAuthStore(s => s.usuario));
   const { data, isLoading } = useQuery({
     queryKey: ['malogrados'],
     queryFn:  () => stockApi.listarMalogrados().then(r => r.data),
@@ -400,6 +404,7 @@ function TablaMalogrados() {
                     <td style={{ ...S.td, color: 'var(--txt-3)' }}>{m.revisadoPor || '—'}</td>
                     <td style={{ ...S.td, color: 'var(--txt-3)', fontStyle: 'italic', fontSize: 12 }}>{m.comentario || '—'}</td>
                     <td style={S.td}>
+                      {lectura ? <span style={{ fontSize: 11, color: 'var(--txt-3)' }}>—</span> : (
                       <button
                         style={{ ...S.btn('blue'), padding: '5px 10px', fontSize: 11 }}
                         onClick={() => mutReingresar.mutate(m.id)}
@@ -408,6 +413,7 @@ function TablaMalogrados() {
                       >
                         <CheckCircle size={11} /> Reingresar
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -423,6 +429,7 @@ function TablaMalogrados() {
 // ── Página principal ──────────────────────────────────────────
 export default function DevolucionesPage() {
   const qc = useQueryClient();
+  const lectura = soloLectura(useAuthStore(s => s.usuario));
   const [tabEstado,    setTabEstado]    = useState('pendiente');
   const [tabSeccion,   setTabSeccion]   = useState('devoluciones'); // 'devoluciones' | 'malogrados'
   const [modalRechazo, setModalRechazo] = useState(null);
@@ -604,7 +611,7 @@ export default function DevolucionesPage() {
                 />
 
                 {/* Acciones globales — solo pendientes */}
-                {dev.estado === 'pendiente' && (
+                {dev.estado === 'pendiente' && !lectura && (
                   <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8, background: 'var(--bg-2)' }}>
                     <button
                       style={S.btn('ghost')}

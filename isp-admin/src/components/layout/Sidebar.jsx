@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { stockApi } from '../../services/api';
 import { LayoutDashboard, ClipboardList, Contact, Users, BarChart2, Map, Package, UserCog, Wifi, ArrowDownToLine, HardHat, ScanSearch, Eye } from 'lucide-react';
 import { useAuthStore } from '../../store/auth.store';
-import { esSupervisor as esRolSupervisor, rutaPermitida } from '../../utils/permisos';
+import { esSupervisor as esRolSupervisor, esGerente as esRolGerente, rutaPermitida } from '../../utils/permisos';
 
 const NAV_PRINCIPAL = [
   { to: '/',         label: 'Dashboard', icon: LayoutDashboard },
@@ -132,6 +132,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   const usuario = useAuthStore(s => s.usuario);
   const esAdmin = usuario?.rol === 'ADMIN';
   const esSupervisor = esRolSupervisor(usuario);
+  const esGerente    = esRolGerente(usuario);
   // El supervisor ve solo lo suyo del menú principal
   const navPrincipal = NAV_PRINCIPAL.filter(i => rutaPermitida(usuario, i.to));
 
@@ -139,7 +140,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
   const { data: devolucionesPendientes } = useQuery({
     queryKey: ['devoluciones', 'pendiente'],
     queryFn:  () => stockApi.listarDevoluciones({ estado: 'pendiente' }).then(r => r.data),
-    enabled:  esAdmin,
+    enabled:  esAdmin || esGerente,
     refetchInterval: 60000,
   });
   const badges = { '/almacen/devoluciones': Array.isArray(devolucionesPendientes) ? devolucionesPendientes.length : 0 };
@@ -184,7 +185,7 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={S.brandName}>Enet Fiber Perú</div>
               <div style={S.brandSub}>
-                {esAdmin ? 'Panel Administrador' : esSupervisor ? 'Panel Supervisor' : 'Panel Secretaría'}
+                {esAdmin ? 'Panel Administrador' : esGerente ? 'Administrador general' : esSupervisor ? 'Panel Supervisor' : 'Panel Secretaría'}
               </div>
             </div>
           )}
@@ -199,8 +200,8 @@ export default function Sidebar({ esMovil, abierto, colapsado, onCerrar }) {
             <NavItem key={to} to={to} label={label} Icon={Icon} active={isActive(to)} {...navItemProps} />
           ))}
 
-          {/* Almacén — solo ADMIN */}
-          {esAdmin && (
+          {/* Almacén — ADMIN y gerente (solo lectura) */}
+          {(esAdmin || esGerente) && (
             <>
               {!colapsado ? <div style={S.sectionLabel}>Almacén</div> : <div style={S.sectionDivider} />}
               {NAV_ALMACEN.map(({ to, label, icon: Icon }) => (

@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, Wifi, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { planesApi } from '../services/api';
+import { useAuthStore } from '../store/auth.store';
+import { soloLectura } from '../utils/permisos';
+import { useSedeVista } from '../hooks/useSedeVista';
 
 const TIPOS = [
   { value: 'INTERNET', label: 'Internet',        color: '#2563EB', bg: '#EFF6FF' },
@@ -77,6 +80,9 @@ export default function PlanesPage() {
   const [modal, setModal]   = useState(null);
   const [form, setForm]     = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
+  const lectura = soloLectura(useAuthStore(s => s.usuario));  // gerente: solo mira
+  const { todas } = useSedeVista();
+  const verSede = lectura && todas;  // con "Todas las sedes" cada plan dice de cuál es
 
   const { data: planes = [], isLoading } = useQuery({
     queryKey: ['planes'],
@@ -144,11 +150,13 @@ export default function PlanesPage() {
       <div style={S.header}>
         <div>
           <h1 style={S.title}>Planes de Internet</h1>
-          <p style={S.sub}>Los precios se usan para identificar el plan al subir un Excel</p>
+          <p style={S.sub}>{lectura ? 'Planes y precios de la sede' : 'Los precios se usan para identificar el plan al subir un Excel'}</p>
         </div>
-        <button style={S.btn('primary')} onClick={abrirCrear}>
-          <Plus size={15} /> Nuevo plan
-        </button>
+        {!lectura && (
+          <button style={S.btn('primary')} onClick={abrirCrear}>
+            <Plus size={15} /> Nuevo plan
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -157,7 +165,7 @@ export default function PlanesPage() {
         <div style={S.empty}>
           <Wifi size={32} style={{ marginBottom: 8, opacity: 0.3 }} />
           <p>No hay planes creados aún.</p>
-          <p style={{ fontSize: 12 }}>Crea un plan para que el sistema asigne Mbps automáticamente al subir el Excel.</p>
+          {!lectura && <p style={{ fontSize: 12 }}>Crea un plan para que el sistema asigne Mbps automáticamente al subir el Excel.</p>}
         </div>
       ) : (
         <>
@@ -170,16 +178,18 @@ export default function PlanesPage() {
                   <div style={S.badge(plan.tipoServicio)}>{plan.mbps} Mbps</div>
                   <div style={S.info}>
                     <div style={S.name}>{plan.nombre}</div>
-                    <div style={S.precio}>S/ {Number(plan.precio).toFixed(2)} / mes</div>
+                    <div style={S.precio}>S/ {Number(plan.precio).toFixed(2)} / mes{verSede && plan.sede?.nombre ? ` · ${plan.sede.nombre}` : ''}</div>
                   </div>
-                  <div style={S.actions}>
-                    <button style={S.btn('ghost')} title="Editar" onClick={() => abrirEditar(plan)}>
-                      <Pencil size={15} />
-                    </button>
-                    <button style={S.btn('danger')} title="Desactivar" onClick={() => handleEliminar(plan)}>
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+                  {!lectura && (
+                    <div style={S.actions}>
+                      <button style={S.btn('ghost')} title="Editar" onClick={() => abrirEditar(plan)}>
+                        <Pencil size={15} />
+                      </button>
+                      <button style={S.btn('danger')} title="Desactivar" onClick={() => handleEliminar(plan)}>
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -197,13 +207,15 @@ export default function PlanesPage() {
                   <div style={S.info}>
                     <div style={S.name}>{plan.nombre}</div>
                     <div style={S.precio}>
-                      S/ {Number(plan.precio).toFixed(2)} / mes · {tipoInfo(plan.tipoServicio).label} · <em>inactivo</em>
+                      S/ {Number(plan.precio).toFixed(2)} / mes · {tipoInfo(plan.tipoServicio).label}{verSede && plan.sede?.nombre ? ` · ${plan.sede.nombre}` : ''} · <em>inactivo</em>
                     </div>
                   </div>
-                  <button style={S.btn('ghost')} title="Reactivar"
-                    onClick={() => mutEditar.mutate({ id: plan.id, data: { activo: true } })}>
-                    <CheckCircle size={15} color="#16a34a" />
-                  </button>
+                  {!lectura && (
+                    <button style={S.btn('ghost')} title="Reactivar"
+                      onClick={() => mutEditar.mutate({ id: plan.id, data: { activo: true } })}>
+                      <CheckCircle size={15} color="#16a34a" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

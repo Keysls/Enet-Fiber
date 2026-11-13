@@ -139,7 +139,7 @@ const listar = async (req, res, next) => {
 const obtener = async (req, res, next) => {
   try {
     const esSoloInternet = req.query.soloInternet === 'true';
-    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || req.usuario.sedeId);
+    const sedeId = ['ADMIN','SECRETARIA','SUPERVISOR'].includes(req.usuario.rol) ? req.usuario.sedeId : (req.query.sedeId || (req.usuario.rol === 'GERENTE' ? undefined : req.usuario.sedeId));
 
     const tipoServicioQuery = req.query.tipoServicio || undefined;
     const contrato = await prisma.contrato.findFirst({

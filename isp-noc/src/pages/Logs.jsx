@@ -31,6 +31,7 @@ const ROL_COLOR = {
   ADMIN:        'yellow',
   TECNICO:      'green',
   SECRETARIA:   'gray',
+  GERENTE:      'blue',
 };
 
 function DetallesCell({ detalles }) {

@@ -55,7 +55,7 @@ router.get('/', requireRol('SUPERADMIN', 'ADMIN'), async (req, res, next) => {
       where = {
         rol: roles
           ? { in: roles.split(',') }
-          : { in: ['SUPERADMIN', 'OPERADOR_NOC', 'ADMIN'] },
+          : { in: ['SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'GERENTE'] },
         ...(sedeId && { sedeId }),
       };
     }
@@ -94,14 +94,14 @@ router.post('/', requireRol('SUPERADMIN'), async (req, res, next) => {
     if (!/[0-9]/.test(password))
       return res.status(400).json({ error: 'La contraseña debe contener al menos un número' });
 
-    const rolesPermitidos = ['SUPERADMIN', 'OPERADOR_NOC', 'ADMIN'];
+    const rolesPermitidos = ['SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'GERENTE'];
     if (!rolesPermitidos.includes(rol))
       return res.status(400).json({ error: `Rol inválido. Permitidos: ${rolesPermitidos.join(', ')}` });
 
     if (rol === 'ADMIN' && !sedeId)
       return res.status(400).json({ error: 'Un ADMIN debe tener una sede asignada' });
 
-    if (['SUPERADMIN', 'OPERADOR_NOC'].includes(rol) && sedeId)
+    if (['SUPERADMIN', 'OPERADOR_NOC', 'GERENTE'].includes(rol) && sedeId)
       return res.status(400).json({ error: `El rol ${rol} no puede tener sede asignada` });
 
     if (sedeId) {
@@ -332,13 +332,19 @@ router.patch('/:id', requireRol('SUPERADMIN', 'ADMIN'), async (req, res, next) =
         return res.status(403).json({ error: 'No autorizado' });
     }
 
+    // El gerente no tiene sede propia: se ignora cualquier sedeId que llegue
+    const objetivo = sedeId !== undefined
+      ? await prisma.usuario.findUnique({ where: { id: req.params.id }, select: { rol: true } })
+      : null;
+    const ignorarSede = objetivo?.rol === 'GERENTE';
+
     const usuario = await prisma.usuario.update({
       where: { id: req.params.id },
       data: {
         ...(nombre   && { nombre }),
         ...(apellido && { apellido }),
         ...(telefono !== undefined && { telefono }),
-        ...(sedeId   !== undefined && { sedeId }),
+        ...(sedeId   !== undefined && !ignorarSede && { sedeId }),
         ...(activo   !== undefined && { activo }),
       },
       select: {

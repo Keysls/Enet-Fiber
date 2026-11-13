@@ -825,6 +825,7 @@ enum Rol {
   TECNICO
   SECRETARIA
   SUPERVISOR   // supervisor de técnicos: ve órdenes/técnicos/mapa/reportes de su sede y asigna
+  GERENTE      // administrador general: solo lectura, todas las sedes (sin sede propia)
 }
 
 enum TipoOrden {

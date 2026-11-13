@@ -135,7 +135,7 @@ export default function DrawerCliente({ numero, sedeId, onCerrar }) {
 
                 {/* Acciones rápidas + cerrar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <IconBtn title="Ver ficha" onClick={() => { onCerrar(); navigate(`/clientes/${c.numero}`); }}>
+                  <IconBtn title="Ver ficha" onClick={() => { onCerrar(); navigate(`/clientes/${c.numero}?sede=${sedeId || c.sede?.id || ''}`); }}>
                     <ExternalLink size={15}/>
                   </IconBtn>
 

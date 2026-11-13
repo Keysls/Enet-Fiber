@@ -241,6 +241,7 @@ const listarDevoluciones = async (req, res, next) => {
 
     const where = {
       ...(rol === 'ADMIN' && { sedeId: miSede }),
+      ...(rol === 'GERENTE' && req.query.sedeId && { sedeId: req.query.sedeId }),
       ...(estado && { estado }),
     };
 
@@ -716,6 +717,7 @@ const listarMalogrados = async (req, res, next) => {
     const where = {
       estado: 'malogrado',
       ...(rol === 'ADMIN' && { sedeId: miSede }),
+      ...(rol === 'GERENTE' && req.query.sedeId && { sedeId: req.query.sedeId }),
       // Antes el "hasta" pisaba al "desde"; ahora van juntos y en hora de Perú
       ...((desde || hasta) && { createdAt: {
         ...(desde && { gte: inicioDiaPeru(desde) }),

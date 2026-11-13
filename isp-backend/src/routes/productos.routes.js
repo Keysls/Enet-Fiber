@@ -4,7 +4,7 @@ const { authMiddleware, requireRol } = require('../middleware/auth.middleware');
 
 router.use(authMiddleware);
 
-router.get('/', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.obtenerProductos);
+router.get('/', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC', 'GERENTE'), ctrl.obtenerProductos);
 router.get('/categorias', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.obtenerCategorias);
 router.get('/stock-sede/:id', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.obtenerStockPorSede);
 router.post('/', requireRol('SUPERADMIN', 'OPERADOR_NOC'), ctrl.crearProducto);

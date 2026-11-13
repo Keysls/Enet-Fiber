@@ -18,6 +18,18 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  // Gerente (administrador general): al consultar, la sede que eligió arriba viaja sola
+  // en cada petición (si la pantalla no pidió otra). "Todas las sedes" = sin filtro.
+  if ((config.method || 'get').toLowerCase() === 'get' && !config.params?.sedeId) {
+    try {
+      const usuario = JSON.parse(localStorage.getItem('admin_usuario') || 'null');
+      if (usuario?.rol === 'GERENTE') {
+        const sedeId = JSON.parse(localStorage.getItem('admin_sede_vista') || 'null')?.state?.sedeId;
+        if (sedeId) config.params = { ...config.params, sedeId };
+      }
+    } catch { /* sin sede elegida */ }
+  }
   return config;
 });
 

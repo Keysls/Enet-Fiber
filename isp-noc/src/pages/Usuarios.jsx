@@ -37,6 +37,7 @@ function RolBadge({ rol }) {
     SUPERADMIN:   { bg: 'rgba(220,38,38,0.08)',  color: '#DC2626', border: 'rgba(220,38,38,0.2)',  label: 'Super Admin'   },
     OPERADOR_NOC: { bg: 'rgba(30,58,138,0.08)',  color: '#1E3A8A', border: 'rgba(30,58,138,0.2)',  label: 'Operador NOC'  },
     ADMIN:        { bg: 'rgba(59,159,212,0.08)', color: '#3B9FD4', border: 'rgba(59,159,212,0.2)', label: 'Administrador' },
+    GERENTE:      { bg: 'rgba(124,58,237,0.08)', color: '#7C3AED', border: 'rgba(124,58,237,0.2)', label: 'Administrador general' },
   };
   const s = config[rol] || config.OPERADOR_NOC;
   return (
@@ -47,7 +48,7 @@ function RolBadge({ rol }) {
 }
 
 function Avatar({ nombre, apellido, rol, size = 36 }) {
-  const color = rol === 'SUPERADMIN' ? '#DC2626' : rol === 'ADMIN' ? '#3B9FD4' : '#1E3A8A';
+  const color = rol === 'SUPERADMIN' ? '#DC2626' : rol === 'ADMIN' ? '#3B9FD4' : rol === 'GERENTE' ? '#7C3AED' : '#1E3A8A';
   return (
     <div style={{
       width: size, height: size, borderRadius: size * 0.25, flexShrink: 0,
@@ -110,6 +111,7 @@ function ModalCrear({ open, onClose }) {
             <Select label="Rol" value={form.rol} onChange={e => set('rol', e.target.value)}>
               <option value="OPERADOR_NOC">Operador NOC</option>
               <option value="ADMIN">Administrador de Sede</option>
+              <option value="GERENTE">Administrador general (solo ver)</option>
               <option value="SUPERADMIN">Super Admin</option>
             </Select>
           </div>
@@ -379,6 +381,7 @@ export default function UsuariosPage() {
     SUPERADMIN:   (usuarios || []).filter(u => u.rol === 'SUPERADMIN').length,
     OPERADOR_NOC: (usuarios || []).filter(u => u.rol === 'OPERADOR_NOC').length,
     ADMIN:        (usuarios || []).filter(u => u.rol === 'ADMIN').length,
+    GERENTE:      (usuarios || []).filter(u => u.rol === 'GERENTE').length,
   }), [usuarios]);
 
   return (
@@ -427,6 +430,7 @@ export default function UsuariosPage() {
             { key: 'SUPERADMIN',   label: 'Super Admin' },
             { key: 'OPERADOR_NOC', label: 'NOC' },
             { key: 'ADMIN',        label: 'Admin' },
+            { key: 'GERENTE',      label: 'Gerente' },
           ].map(({ key, label }) => (
             <button key={key} onClick={() => setFiltroRol(key)} style={{
               padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',

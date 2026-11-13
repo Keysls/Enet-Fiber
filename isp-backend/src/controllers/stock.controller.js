@@ -828,8 +828,9 @@ const listarEnviosOrigen = async (req, res, next) => {
 
 const statsControlador = async (req, res, next) => {
   try {
-    const sedeId = getSedeId(req);
-    if (!sedeId) return res.status(400).json({ error: 'Debe indicar una sede' });
+    // GERENTE sin sede elegida: suma todas las sedes (sedeId queda undefined, sin filtro)
+    const sedeId = getSedeId(req) || undefined;
+    if (!sedeId && req.usuario.rol !== 'GERENTE') return res.status(400).json({ error: 'Debe indicar una sede' });
 
     const [tecnicos, totalProductos, stock, stockBajo, ultimasSalidas, asignaciones] = await Promise.all([
       prisma.tecnico.count({ where: { activo: true, usuario: { sedeId } } }),

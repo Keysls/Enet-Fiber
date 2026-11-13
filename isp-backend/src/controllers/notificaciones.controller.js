@@ -14,7 +14,7 @@ const listar = async (req, res, next) => {
     const tiposExcluidosAdmin     = ['ONU_ERROR_OLT', 'ORDEN_PENDIENTE_WAN'];
     const tiposExcluidosSecretaria = ['ENVIO_PENDIENTE_RECEPCION', 'STOCK_BAJO', 'STOCK_CRITICO'];
     const esNoc        = ['SUPERADMIN', 'OPERADOR_NOC'].includes(rol) && !sedeId;
-    const esAdmin       = rol === 'ADMIN';
+    const esAdmin       = rol === 'ADMIN' || rol === 'GERENTE'; // el gerente ve lo mismo que el admin de sede
     const esSecretaria  = rol === 'SECRETARIA';
     const esSupervisor  = rol === 'SUPERVISOR';
 

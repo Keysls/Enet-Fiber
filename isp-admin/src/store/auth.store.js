@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { authApi } from '../services/api';
 import { queryClient } from '../queryClient';
+import { useVistaStore } from './vista.store';
 
 const cargarUsuarioInicial = () => {
   try {
@@ -45,13 +46,14 @@ export const useAuthStore = create((set, get) => ({
         return { ok: false, requiere2FA: true };
       }
 
-      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR'].includes(data.usuario.rol)) {
+      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'].includes(data.usuario.rol)) {
         await invalidarTokenHuerfano(data.token);
         set({ loading: false });
         return { ok: false, error: 'No tienes acceso al panel de administrador' };
       }
 
-      if (!data.usuario.sedeId) {
+      // El gerente no tiene sede propia: ve todas y elige una arriba
+      if (!data.usuario.sedeId && data.usuario.rol !== 'GERENTE') {
         await invalidarTokenHuerfano(data.token);
         set({ loading: false });
         return { ok: false, error: 'Tu usuario no tiene sede asignada. Contacta al administrador.' };
@@ -80,7 +82,7 @@ export const useAuthStore = create((set, get) => ({
         dispositivo: 'Panel Admin',
       });
 
-      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR'].includes(data.usuario.rol)) {
+      if (!['ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'].includes(data.usuario.rol)) {
         await invalidarTokenHuerfano(data.token);
         set({ loading: false });
         return { ok: false, error: 'No tienes acceso al panel de administrador' };
@@ -113,6 +115,7 @@ export const useAuthStore = create((set, get) => ({
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_usuario');
     set({ token: null, refreshToken: null, usuario: null, requiere2FA: false });
+    useVistaStore.getState().reset();
     queryClient.clear();
 },
 

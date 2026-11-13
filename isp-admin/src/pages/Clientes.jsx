@@ -8,6 +8,8 @@ import { Card, Table, Tr, Td, Btn, Empty, Modal, Spinner } from '../components/u
 import { fmtFecha } from '../utils/helpers';
 import { useTiposOrden } from '../hooks/useTiposOrden';
 import DrawerCliente from '../components/DrawerCliente';
+import { useAuthStore } from '../store/auth.store';
+import { soloLectura } from '../utils/permisos';
 
 // ── Hook: detectar móvil ──────────────────────────────────────
 function useIsMobile(breakpoint = 640) {
@@ -305,6 +307,7 @@ export default function ClientesPage() {
   const [contratoSel,   setContratoSel]   = useState(null);
   const [searchOpen,    setSearchOpen]    = useState(false);
   const [showImport,    setShowImport]    = useState(false);
+  const lectura = soloLectura(useAuthStore(s => s.usuario)); // gerente: no importa contratos
   const [tipoServicio,  setTipoServicio]  = useState('');
   const LIMIT = 15;
 
@@ -363,9 +366,11 @@ export default function ClientesPage() {
             <option value="CABLE">📺 Cable</option>
             <option value="DUO">📡📺 Dúo</option>
           </select>
-          <Btn variant="primary" size="sm" onClick={() => setShowImport(true)} icon={<Upload size={13} />}>
-            {isMobile ? 'Importar' : 'Importar Excel'}
-          </Btn>
+          {!lectura && (
+            <Btn variant="primary" size="sm" onClick={() => setShowImport(true)} icon={<Upload size={13} />}>
+              {isMobile ? 'Importar' : 'Importar Excel'}
+            </Btn>
+          )}
         </div>
       </div>
 

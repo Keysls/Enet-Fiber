@@ -9,7 +9,8 @@ import { fmtFecha, fmtFechaHora, TIPO_COLOR, ESTADO_CONFIG } from '../utils/help
 import { useTiposOrden } from '../hooks/useTiposOrden';
 import DrawerOrden from '../components/DrawerOrden';
 import { useAuthStore } from '../store/auth.store';
-import { esSupervisor } from '../utils/permisos';
+import { esSupervisor, soloLectura } from '../utils/permisos';
+import { useSedeVista } from '../hooks/useSedeVista';
 import { hoyLocal } from '../utils/helpers';
 
 function useIsMobile(breakpoint = 1081) {
@@ -304,11 +305,15 @@ export default function OrdenesPage() {
   const qc = useQueryClient();
 
   const { usuario } = useAuthStore();
+  const vista = useSedeVista();
+  const lectura = soloLectura(usuario);
+  // Una orden es "de otra sede" si no es la del usuario; el gerente con "Todas" las ve todas con su sede
+  const esOtraSede = (o) => lectura ? vista.todas : o.sedeId !== usuario?.sedeId;
 
   const { data: siscadreConexiones = [] } = useQuery({
     queryKey: ['siscadre-conexiones', usuario?.sedeId],
     queryFn:  () => siscadreApi.listarConexiones(usuario.sedeId).then(r => r.data),
-    enabled:  !!usuario?.sedeId && !esSupervisor(usuario),
+    enabled:  !!usuario?.sedeId && !esSupervisor(usuario) && !lectura,
   });
 
   const tieneSiscadre = siscadreConexiones.length > 0;
@@ -451,7 +456,7 @@ export default function OrdenesPage() {
           >
             {isMobile ? 'Exportar' : 'Exportar Excel'}
           </Btn>
-          {esSupervisor(usuario) ? null : tieneSiscadre ? (
+          {esSupervisor(usuario) || lectura ? null : tieneSiscadre ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
               <Btn
                 variant="primary" size="sm"
@@ -639,13 +644,13 @@ export default function OrdenesPage() {
             {isLoading ? (
               <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><Spinner size={24} /></div>
             ) : ordenes.length === 0 ? (
-              <Empty icon="📋" title="Sin órdenes" subtitle="Importa un Excel para comenzar" />
+              <Empty icon="📋" title="Sin órdenes" subtitle={lectura ? 'No hay órdenes con estos filtros' : 'Importa un Excel para comenzar'} />
             ) : (
               ordenes.map(o => (
                 <OrdenCard key={o.id} o={o}
                   onNavigate={id => setOrdenDrawer(id)}
                   tipoLabel={tipoLabel}
-                  otraSede={o.sedeId !== usuario?.sedeId}
+                  otraSede={esOtraSede(o)}
                 />
               ))
             )}
@@ -656,13 +661,13 @@ export default function OrdenesPage() {
               'N°','Abonado','Dirección / Referencia','Servicio','Fecha','Estado','Técnico','Completado',
             ]}>
             {ordenes.length === 0 && !isLoading ? (
-              <tr><td colSpan={7}><Empty icon="📋" title="Sin órdenes" subtitle="Importa un Excel para comenzar" /></td></tr>
+              <tr><td colSpan={7}><Empty icon="📋" title="Sin órdenes" subtitle={lectura ? 'No hay órdenes con estos filtros' : 'Importa un Excel para comenzar'} /></td></tr>
             ) : ordenes.map(o => {
               return (
                 <Tr key={o.id} onClick={() => setOrdenDrawer(o.id)}>
                   <Td>
                     <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, color: 'var(--accent)' }}>#{o.nServicio}</span>
-                    {o.sedeId !== usuario?.sedeId && <div style={{ marginTop: 3 }}><SedeBadge nombre={o.sede?.nombre} /></div>}
+                    {esOtraSede(o) && <div style={{ marginTop: 3 }}><SedeBadge nombre={o.sede?.nombre} /></div>}
                   </Td>
                   <Td>
                     <div style={{ fontWeight: 500 }}>{o.abonado}</div>

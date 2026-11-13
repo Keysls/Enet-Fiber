@@ -4,6 +4,9 @@ import { ChevronDown, LogOut, UserCircle, Menu, PanelLeft, Bell, BellOff, Key, S
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificacionesApi } from '../../services/api';
+import { esGerente } from '../../utils/permisos';
+import { useVistaStore } from '../../store/vista.store';
+import SelectorSede from './SelectorSede';
 
 const TOPBAR_CSS = `
   @media (max-width: 1080px) {
@@ -57,13 +60,16 @@ export default function Topbar({ esMovil, colapsado, anchoSidebar, onMenuToggle,
 
   // ── Notificaciones ──────────────────────────────────────────
   const qc = useQueryClient();
-  const sedeId = usuario?.sedeId;
+  const gerente = esGerente(usuario);
+  const sedeElegida = useVistaStore(s => s.sedeId);
+  // El gerente mira la sede que elige en el selector (o todas); los demás, la suya
+  const sedeId = gerente ? (sedeElegida || undefined) : usuario?.sedeId;
 
   const { data: notisData } = useQuery({
     queryKey: ['notificaciones-admin', sedeId],
     queryFn:  () => notificacionesApi.listar({ sedeId }).then(r => r.data),
     refetchInterval: 10000,   // refresca cada 10 seg
-    enabled: !!sedeId,
+    enabled: gerente || !!sedeId,
   });
   const notificaciones = notisData?.items || [];
 
@@ -138,6 +144,9 @@ export default function Topbar({ esMovil, colapsado, anchoSidebar, onMenuToggle,
         {titulo}
       </h1>
 
+      {/* Selector de sede — solo gerente */}
+      {gerente && <SelectorSede />}
+
       {/* ── Lado derecho ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
 
@@ -185,7 +194,7 @@ export default function Topbar({ esMovil, colapsado, anchoSidebar, onMenuToggle,
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#0D1B2A' }}>
                     Notificaciones {notificaciones.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, background: '#DC2626', color: '#fff', borderRadius: 20, padding: '1px 7px' }}>{notificaciones.length}</span>}
                   </span>
-                  {notificaciones.length > 0 && (
+                  {notificaciones.length > 0 && !gerente && (
                     <button onClick={marcarTodas} style={{ fontSize: 11, color: '#3B9FD4', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                       Marcar todas leídas
                     </button>
@@ -200,7 +209,7 @@ export default function Topbar({ esMovil, colapsado, anchoSidebar, onMenuToggle,
                   <div style={{ maxHeight: 320, overflowY: 'auto' }}>
                     {notificaciones.map(n => (
                       <div key={n.id}
-                        onClick={() => { marcarLeida(n.id); setShowNotis(false); if (n.link) navigate(n.link); }}
+                        onClick={() => { if (!gerente) marcarLeida(n.id); setShowNotis(false); if (n.link) navigate(n.link); }}
                         style={{
                           display: 'flex', gap: 10, padding: '10px 14px',
                           borderBottom: '1px solid #EAF1F8', cursor: 'pointer',
@@ -263,7 +272,7 @@ export default function Topbar({ esMovil, colapsado, anchoSidebar, onMenuToggle,
               <div style={{ fontSize: 12, fontWeight: 700, color: '#0D1B2A' }}>
                 {usuario?.nombre} {usuario?.apellido}
               </div>
-              <div style={{ fontSize: 10, color: '#8AAABB' }}>Administrador</div>
+              <div style={{ fontSize: 10, color: '#8AAABB' }}>{gerente ? 'Administrador general' : 'Administrador'}</div>
             </div>
             <ChevronDown size={14} color="#8AAABB"
               style={{ transition: 'transform .15s', transform: showMenu ? 'rotate(180deg)' : 'none' }}/>

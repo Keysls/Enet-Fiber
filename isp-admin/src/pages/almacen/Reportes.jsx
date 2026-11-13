@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, Download, FileDown, X, Calendar, User, Tag } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { stockApi } from '../../services/api';
-import { useAuthStore } from '../../store/auth.store';
+import { useSedeVista } from '../../hooks/useSedeVista';
 import { Card, Spinner, Btn, Modal as UIModal } from '../../components/ui';
 const CSS = `
   .arep-stats   { flex-wrap: wrap; }
@@ -69,9 +69,10 @@ if (typeof document !== 'undefined' && !document.getElementById('arep-responsive
   document.head.appendChild(s);
 }
 
+// Sede con la que se trabaja (gerente: la elegida arriba o "Todas las sedes")
 function useMiSede() {
-  const usuario = useAuthStore(s => s.usuario);
-  return { sedeId: usuario?.sedeId, sedeNombre: usuario?.sede?.nombre || 'Mi sede' };
+  const { sedeId, sedeNombre, gerente } = useSedeVista();
+  return { sedeId, sedeNombre, gerente };
 }
 
 const TIPOS = {
@@ -342,14 +343,14 @@ function ExportModal({ movimientos, sedeNombre, onClose }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminAlmacenReportes() {
-  const { sedeId, sedeNombre } = useMiSede();
+  const { sedeId, sedeNombre, gerente } = useMiSede();
   const [q, setQ] = useState('');
   const [activeTipo, setActiveTipo] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
 
   const { data: auditoria, isLoading } = useQuery({
     queryKey: ['admin-stock-auditoria', sedeId],
-    enabled: Boolean(sedeId),
+    enabled: Boolean(sedeId) || gerente,
     queryFn: () => stockApi.auditoria({ sedeId }).then(r => r.data),
     staleTime: 30000,
   });

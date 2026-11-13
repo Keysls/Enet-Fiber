@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import { contratosApi, puntosRedApi, sedesApi, tecnicosApi } from '../services/api';
 import { useAuthStore } from '../store/auth.store';
+import { soloLectura } from '../utils/permisos';
 
 const ESTADO_CFG = {
   ACTIVO:         { label: 'Activo',         color: '#3fb950' },
@@ -219,7 +220,8 @@ function PanelFlotante({ esMovil, anclaje, onCerrar, children }) {
 export default function MapaPage() {
   const qc = useQueryClient();
   const usuario = useAuthStore(s => s.usuario);
-  const soloVer = usuario?.rol === 'SUPERVISOR';
+  const lectura = soloLectura(usuario);  // gerente: ve todo, no cambia nada
+  const soloVer = usuario?.rol === 'SUPERVISOR' || lectura;
   const esMovil = useEsMovil();
 
   const [estadoFiltro,   setEstadoFiltro]   = useState('');
@@ -481,7 +483,7 @@ export default function MapaPage() {
                         <div style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: cfg.color + '22', color: cfg.color, marginBottom: 8 }}>
                           {cfg.label}
                         </div>
-                        {!soloVer && <div><Link to={`/clientes/${p.numero}`} style={{ fontSize: 11, color: '#3b9fd4', fontWeight: 700 }}>Ver detalle →</Link></div>}
+                        {(!soloVer || lectura) && <div><Link to={`/clientes/${p.numero}?sede=${p.sede?.id || ''}`} style={{ fontSize: 11, color: '#3b9fd4', fontWeight: 700 }}>Ver detalle →</Link></div>}
                       </div>
                     </Popup>
                   </CircleMarker>

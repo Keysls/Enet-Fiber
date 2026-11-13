@@ -7,11 +7,11 @@ router.use(authMiddleware);
 // ═════════════════════════════════════════════════════════════
 // RUTAS LITERALES PRIMERO (deben ir ANTES de las paramétricas)
 // ═════════════════════════════════════════════════════════════
-router.get('/stats',         requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.stats);
-router.get('/reportes',      requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'),   ctrl.reportes);
+router.get('/stats',         requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'), ctrl.stats);
+router.get('/reportes',      requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'),   ctrl.reportes);
 router.get('/historial-wan', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.historialWan);
 router.get('/notificaciones', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA'), ctrl.notificaciones);
-router.get('/exportar',       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.exportarCsv);
+router.get('/exportar',       requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'GERENTE'), ctrl.exportarCsv);
 
 // Importar Excel
 router.post('/subir-excel',     requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.subirExcel);
@@ -20,13 +20,13 @@ router.post('/confirmar-excel', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'),
 // ═════════════════════════════════════════════════════════════
 // LISTAR / CREAR
 // ═════════════════════════════════════════════════════════════
-router.get('/',  requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO'), ctrl.listar);
+router.get('/',  requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO', 'GERENTE'), ctrl.listar);
 router.post('/', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA'), ctrl.crear);
 
 // ═════════════════════════════════════════════════════════════
 // RUTAS PARAMÉTRICAS (deben ir DESPUÉS de las literales)
 // ═════════════════════════════════════════════════════════════
-router.get('/:id', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO'), ctrl.obtener);
+router.get('/:id', requireRol('SUPERADMIN', 'OPERADOR_NOC', 'ADMIN', 'SECRETARIA', 'SUPERVISOR', 'TECNICO', 'GERENTE'), ctrl.obtener);
 
 // ADMIN asigna técnico
 router.patch('/:id/asignar', requireRol('SUPERADMIN', 'ADMIN', 'SECRETARIA', 'SUPERVISOR'), ctrl.asignar);

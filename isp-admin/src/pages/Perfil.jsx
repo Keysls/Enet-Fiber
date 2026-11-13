@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { User, Mail, Phone, Lock, Save, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi, usuariosApi } from '../services/api';
+import { ETIQUETA_ROL } from '../utils/permisos';
 import { Card, Btn, Input, Spinner } from '../components/ui';
 import { useAuthStore } from '../store/auth.store';
 
@@ -129,7 +130,7 @@ export default function PerfilPage() {
             <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 3 }}>{usuario?.email}</div>
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: 'rgba(30,58,138,0.1)', color: '#1E3A8A', border: '1px solid rgba(30,58,138,0.2)' }}>
-                {usuario?.rol}
+                {ETIQUETA_ROL[usuario?.rol] && usuario?.rol === 'GERENTE' ? ETIQUETA_ROL.GERENTE : usuario?.rol}
               </span>
               {activo2FA && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 20, background: 'rgba(22,163,74,0.1)', color: '#16A34A', border: '1px solid rgba(22,163,74,0.2)' }}>

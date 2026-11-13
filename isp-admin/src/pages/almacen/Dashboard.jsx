@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { stockApi } from '../../services/api';
-import { useAuthStore } from '../../store/auth.store';
+import { useSedeVista } from '../../hooks/useSedeVista';
 import { Spinner } from '../../components/ui';
 
 // ─── CSS ─────────────────────────────────────────────────────
@@ -83,13 +83,12 @@ function fmtFechaCorta(fecha) {
 }
 
 export default function AdminAlmacenDashboard() {
-  const usuario   = useAuthStore(s => s.usuario);
-  const sedeId    = usuario?.sedeId;
-  const sedeNombre = usuario?.sede?.nombre || 'Mi sede';
+  // Gerente: la sede que eligió arriba, o todas (el backend suma todas sin sede)
+  const { sedeId, sedeNombre, gerente } = useSedeVista();
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['admin-stock-stats', sedeId],
-    enabled:  Boolean(sedeId),
+    enabled:  Boolean(sedeId) || gerente,
     queryFn:  () => stockApi.stats().then(r => r.data),
     staleTime: 30000,
     refetchInterval: 60000,

@@ -7,11 +7,14 @@ const TIPOS_VALIDOS = ['INTERNET', 'DUO'];
 // ── GET /api/planes ───────────────────────────────────────────
 const listar = async (req, res) => {
   try {
-    const sedeId = req.usuario.sedeId;
-    if (!sedeId) return res.status(400).json({ error: 'Sin sede asignada' });
+    // GERENTE: todas las sedes, o la que elija con ?sedeId=
+    const esGerente = req.usuario.rol === 'GERENTE';
+    const sedeId = esGerente ? req.query.sedeId : req.usuario.sedeId;
+    if (!sedeId && !esGerente) return res.status(400).json({ error: 'Sin sede asignada' });
 
     const planes = await prisma.planInternet.findMany({
-      where:   { sedeId },
+      where:   sedeId ? { sedeId } : {},
+      ...(esGerente && { include: { sede: { select: { id: true, nombre: true } } } }),
       orderBy: [{ tipoServicio: 'asc' }, { mbps: 'asc' }],
     });
     res.json(planes);

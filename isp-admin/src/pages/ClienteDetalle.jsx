@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Phone, Fingerprint, Building2,
   Router, Wifi, Activity, Calendar, User, Clock, ChevronRight, Copy,
@@ -33,10 +33,13 @@ export default function ClienteDetalle() {
   const { numero } = useParams();
   const { tipoLabel } = useTiposOrden();
   const navigate   = useNavigate();
+  // Hay contratos con el mismo número en varias sedes: la sede viaja en el enlace (?sede=)
+  const [searchParams] = useSearchParams();
+  const sede = searchParams.get('sede') || undefined;
 
   const { data: c, isLoading, error } = useQuery({
-    queryKey: ['contrato', numero],
-    queryFn:  () => contratosApi.obtener(numero).then(r => r.data),
+    queryKey: ['contrato', numero, sede],
+    queryFn:  () => contratosApi.obtener(numero, sede).then(r => r.data),
     enabled:  !!numero,
     staleTime: 30000,
   });
