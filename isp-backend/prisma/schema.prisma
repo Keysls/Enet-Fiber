@@ -52,7 +52,8 @@ model Sede {
 
 // Una sede apoya a otra con sus técnicos (ej. Nueva Cajamarca → Naranjillo).
 // Los técnicos y el admin de `sede` ven, toman y sincronizan las órdenes de
-// `sedeApoyada`; no al revés. Una sede puede apoyar a varias.
+// `sedeApoyada`. Una sede puede apoyar a varias. Cada sentido se configura
+// por separado (puede ser mutuo) y no es transitivo.
 model SedeApoyo {
   sedeId         String   @map("sede_id")
   sedeApoyadaId  String   @map("sede_apoyada_id")

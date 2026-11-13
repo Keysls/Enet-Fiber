@@ -16,7 +16,8 @@ async function sinTabla(promesa, porDefecto) {
 
 // Sedes cuyas órdenes pueden atender los técnicos de `sedeId`:
 // la propia primero y luego las que apoya (ej. Nueva Cajamarca → Naranjillo, Soritor).
-// El apoyo es en un solo sentido: la sede apoyada no ve las órdenes de la que la apoya.
+// El apoyo no es transitivo ni obligatoriamente recíproco: A→B no implica B→A
+// (pueden apoyarse mutuamente si se configuran los dos), ni A→C si B→C.
 async function sedesQueAtiende(sedeId) {
   if (!sedeId) return [];
   const apoyos = await sinTabla(prisma.sedeApoyo.findMany({

@@ -62,8 +62,8 @@ function SelectorSedesApoyo({ sede, sedes, seleccion, onChange }) {
   const [abierto, setAbierto] = useState(false);
   const [buscar, setBuscar]   = useState('');
 
-  // No se ofrece la propia sede ni las que ya apoyan a esta (el apoyo es en un solo sentido)
-  const opciones   = sedes.filter(s => s.id !== sede.id && !(s.apoyaASedes || []).some(a => a.id === sede.id));
+  // Solo se excluye la propia sede (el apoyo puede ser mutuo)
+  const opciones   = sedes.filter(s => s.id !== sede.id);
   const filtradas  = opciones.filter(s => s.nombre.toLowerCase().includes(buscar.trim().toLowerCase()));
   const elegidas   = opciones.filter(s => seleccion.includes(s.id));
   const toggle     = (id) => onChange(seleccion.includes(id) ? seleccion.filter(x => x !== id) : [...seleccion, id]);
@@ -112,7 +112,7 @@ function SelectorSedesApoyo({ sede, sedes, seleccion, onChange }) {
 
       <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>
         {elegidas.length > 0
-          ? 'Los técnicos y el admin de esta sede ven, toman y sincronizan las órdenes de esas sedes. Esas sedes no ven las de esta.'
+          ? 'Los técnicos y el admin de esta sede ven, toman y sincronizan las órdenes de esas sedes. Para que ellas también vean las de esta, configúralo en cada una.'
           : 'Los técnicos de esta sede solo atienden las órdenes de esta sede.'}
       </div>
     </div>
@@ -185,7 +185,7 @@ function ModalEditarSede({ open, onClose, sede, sedes = [] }) {
           </button>
         </div>
 
-        {/* Apoyo con técnicos a otras sedes (en un solo sentido) */}
+        {/* Sedes a las que esta sede apoya con sus técnicos (cada sentido se configura por separado) */}
         <SelectorSedesApoyo
           sede={sede}
           sedes={sedes}
@@ -839,7 +839,8 @@ function EquiposCabeceraSection({ sedeId }) {
 // FILA DE SEDE (vista lista)
 // ─────────────────────────────────────────────────────────────
 
-function SedeRow({ sede, onEditar, onSiscadre }) {
+function SedeRow({ sede, sedes = [], onEditar, onSiscadre }) {
+  const recibeDe = sedes.filter(s => (s.apoyaASedes || []).some(a => a.id === sede.id));
   const [verOlts, setVerOlts] = useState(false);
   const [verCabecera, setVerCabecera] = useState(false);
   const expandido = verOlts || verCabecera;
@@ -876,6 +877,11 @@ function SedeRow({ sede, onEditar, onSiscadre }) {
             {sede.apoyaASedes?.length > 0 && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: 'rgba(124,58,237,0.08)', color: '#7C3AED', border: '1px solid rgba(124,58,237,0.22)' }}>
                 <Users size={10}/> Apoya a {sede.apoyaASedes.map(s => s.nombre).join(', ')}
+              </span>
+            )}
+            {recibeDe.length > 0 && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20, background: 'rgba(14,165,233,0.08)', color: '#0EA5E9', border: '1px solid rgba(14,165,233,0.22)' }}>
+                <Users size={10}/> Recibe apoyo de {recibeDe.map(s => s.nombre).join(', ')}
               </span>
             )}
             <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 8px', borderRadius: 20, background: sede.activo ? 'rgba(22,163,74,0.08)' : 'rgba(100,116,139,0.1)', color: sede.activo ? '#16A34A' : '#64748B', border: `1px solid ${sede.activo ? 'rgba(22,163,74,0.2)' : 'rgba(100,116,139,0.2)'}` }}>
@@ -976,7 +982,7 @@ export default function SedesPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(sedes || []).map(s => (
-            <SedeRow key={s.id} sede={s} onEditar={setSedeEditar} onSiscadre={setSiscadre}/>
+            <SedeRow key={s.id} sede={s} sedes={sedes} onEditar={setSedeEditar} onSiscadre={setSiscadre}/>
           ))}
         </div>
       )}

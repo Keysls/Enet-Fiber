@@ -126,7 +126,7 @@ const actualizar = async (req, res, next) => {
       }
 
       // Sedes a las que apoya con sus técnicos (reemplaza la lista completa):
-      // no a sí misma, solo sedes que existen y no a una que ya apoya a esta
+      // no a sí misma, solo sedes que existen (el apoyo mutuo está permitido)
       if (apoyaASedes !== undefined) {
         const falla = (msg) => { const error = new Error(msg); error.status = 400; throw error; };
         if (!Array.isArray(apoyaASedes)) falla('apoyaASedes debe ser una lista de sedes');
@@ -136,11 +136,6 @@ const actualizar = async (req, res, next) => {
         if (ids.length > 0) {
           const existentes = await tx.sede.findMany({ where: { id: { in: ids } }, select: { id: true } });
           if (existentes.length !== ids.length) falla('Alguna de las sedes a apoyar no existe');
-          const reciproca = await tx.sedeApoyo.findFirst({
-            where:  { sedeId: { in: ids }, sedeApoyadaId: req.params.id },
-            select: { sede: { select: { nombre: true } } },
-          });
-          if (reciproca) falla(`${reciproca.sede.nombre} ya apoya a esta sede. El apoyo es en un solo sentido.`);
         }
 
         await tx.sedeApoyo.deleteMany({ where: { sedeId: req.params.id, sedeApoyadaId: { notIn: ids } } });
