@@ -22,11 +22,13 @@ const TITULO_MOVIMIENTO = {
   ENVIO_RECIBIDO:      'Envío recibido',
   ENVIO_CANCELADO:     'Envío cancelado (volvió al origen)',
   REINGRESO_MALOGRADA: 'Reingresada (estaba malograda)',
+  TRASPASO_TECNICO:    'Traspaso entre técnicos',
 };
 
 const ACCION_LOG = {
   AUTORIZAR_ONU_MANUAL: 'Autorizada a mano en la OLT',
   AUTORIZAR_ONU:        'Autorizada en la OLT',
+  TRASPASO_TECNICO:     'Traspaso entre técnicos',
 };
 const accionLegible = (a) => ACCION_LOG[a] || a.toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
 
@@ -190,11 +192,14 @@ async function buscarHistorial(req, res, next) {
       let titulo = TITULO_MOVIMIENTO[m.tipo] || m.tipo;
       if (m.tipo === 'ENVIO' && destino) titulo = `Enviada a ${destino}`;
       if (m.tipo === 'ENVIO_RECIBIDO' && destino) titulo = `Recibida en ${destino}`;
+      if (m.tipo === 'TRASPASO_TECNICO' && m.detalle) titulo = `Traspaso ${m.detalle}`;
       agregar({
         fecha: m.fecha, tipo: m.tipo.toLowerCase(), titulo,
         detalle: m.tipo === 'ENVIO' || m.tipo === 'ENVIO_RECIBIDO' || m.tipo === 'ENVIO_CANCELADO'
           ? [origen && destino && `${origen} → ${destino}`, m.detalle].filter(Boolean).join(' · ')
-          : m.detalle,
+          : m.tipo === 'TRASPASO_TECNICO'
+            ? (m.referencia ? `Traspaso N° ${m.referencia}` : null)
+            : m.detalle,
         sede: m.tipo.startsWith('ENVIO') ? null : origen,
         usuario: quien(m.usuarioId),
       });
@@ -272,6 +277,8 @@ async function buscarHistorial(req, res, next) {
     for (const l of logs) {
       // Las autorizaciones ya salen de la OLT (config_onu); el log solo suma lo que falte
       if (/AUTORIZAR/.test(l.accion) && configs.length > 0) continue;
+      // El traspaso ya sale de onu_movimientos; el log solo es el respaldo si esa tabla no existe
+      if (l.accion === 'TRASPASO_TECNICO' && movimientos.some(m => m.tipo === 'TRASPASO_TECNICO')) continue;
       agregar({ fecha: l.createdAt, tipo: 'log', titulo: accionLegible(l.accion), usuario: quien(l.usuarioId) });
     }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Pencil, Lock, PowerOff, Power, Phone, Mail, MapPin, Car, CreditCard, Package, Wifi, FileDown, FileText, ChevronUp } from 'lucide-react';
+import { UserPlus, Pencil, Lock, PowerOff, Power, Phone, Mail, MapPin, Car, CreditCard, Package, Wifi, FileDown, FileText, ChevronUp, ArrowLeftRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { tecnicosApi, stockApi } from '../services/api';
 import { Card, Btn, Modal, Input, Avatar, Spinner, Empty } from '../components/ui';
@@ -83,7 +83,7 @@ function SectionLabel({ children }) {
 }
 
 // ── Panel Inventario (desglosable, ya no es overlay) ───────────────
-function PanelInventario({ tecnico, onClose }) {
+function PanelInventario({ tecnico, onClose, onTraspaso }) {
   const [tab, setTab] = useState('stock');
   const [showPdf, setShowPdf] = useState(false);
 
@@ -248,6 +248,17 @@ function PanelInventario({ tecnico, onClose }) {
             >
               <FileText size={13} /> Pdf
             </button>
+            {onTraspaso && (
+              <button
+                onClick={onTraspaso}
+                disabled={isLoading || !data}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--txt)', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', opacity: isLoading || !data ? 0.4 : 1 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#0891b2'; e.currentTarget.style.color = '#0891b2'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--txt)'; }}
+              >
+                <ArrowLeftRight size={13} /> Pasar a otro técnico
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -449,6 +460,8 @@ function PanelInventario({ tecnico, onClose }) {
                   consumo:      { label: 'Gasto',      color: '#e67e22', bg: '#fff7ed', symbol: '−' },
                   envio_salida: { label: 'Recojo',     color: '#16a34a', bg: '#dcfce7', symbol: '↑' },
                   devolucion:   { label: 'Devolución', color: '#7c3aed', bg: '#f5f3ff', symbol: '↩' },
+                  traspaso_entrada: { label: 'Traspaso recibido',   color: '#0891b2', bg: '#ecfeff', symbol: '↓' },
+                  traspaso_salida:  { label: 'Traspaso entregado', color: '#7c3aed', bg: '#f5f3ff', symbol: '↑' },
                 }[h.tipo] || { label: h.tipo, color: '#64748b', bg: 'var(--bg-2)', symbol: '·' };
                 return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, borderBottom: i < data.historial.length - 1 ? '1px solid var(--border)' : 'none' }}>
@@ -787,6 +800,221 @@ function ModalCrear({ open, onClose }) {
   );
 }
 
+// ── Modal Traspaso: pasar material de un técnico a otro (misma sede) ──
+function ModalTraspaso({ open, onClose, origen, tecnicos }) {
+  const qc = useQueryClient();
+  const [destinoId,  setDestinoId]  = useState('');
+  const [onusSel,    setOnusSel]    = useState([]);      // ids de ONUs marcadas
+  const [valores,    setValores]    = useState({});      // { [productoId]: texto }
+  const [buscar,     setBuscar]     = useState('');
+  const [comentario, setComentario] = useState('');
+
+  React.useEffect(() => {
+    if (open) { setDestinoId(''); setOnusSel([]); setValores({}); setBuscar(''); setComentario(''); }
+  }, [open, origen?.id]);
+
+  const { data, isLoading, error: errorCarga } = useQuery({
+    queryKey: ['traspaso-disponible', origen?.id],
+    queryFn:  () => stockApi.disponibleTraspaso(origen.id).then(r => r.data),
+    enabled:  open && !!origen?.id,
+    staleTime: 0,
+  });
+
+  const sedeOrigen = origen?.usuario?.sede?.id;
+  const destinos = (tecnicos || []).filter(t =>
+    t.id !== origen?.id && t.activo && t.usuario?.activo !== false && t.usuario?.sede?.id === sedeOrigen
+  );
+  const destino = destinos.find(t => t.id === destinoId);
+  const nombreDe = (t) => `${t?.usuario?.nombre || ''} ${t?.usuario?.apellido || ''}`.trim();
+
+  const items = data?.items || [];
+  const onus  = data?.onus || [];
+  const onusBloqueadas = data?.onusBloqueadas || [];
+
+  // Validación de cada material con cantidad escrita
+  const filas = items.map(it => {
+    const txt = (valores[it.productoId] ?? '').trim();
+    const n = Number(txt);
+    let error = null;
+    if (txt !== '') {
+      if (!Number.isInteger(n) || n <= 0) error = 'Escribe un número entero mayor a 0';
+      else if (n > it.disponible) error = `Máximo ${it.disponible} ${it.unidad}`;
+    }
+    return { ...it, txt, n, error, elegido: txt !== '' && !error };
+  });
+  const elegidos = filas.filter(f => f.elegido);
+  const hayError = filas.some(f => f.error);
+  const onusElegidas = onus.filter(o => onusSel.includes(o.id));
+  const hayAlgo = elegidos.length > 0 || onusElegidas.length > 0;
+
+  const resumen = [
+    ...(onusElegidas.length ? [`${onusElegidas.length} ONU${onusElegidas.length > 1 ? 's' : ''} (${onusElegidas.map(o => o.codigoPon).join(', ')})`] : []),
+    ...elegidos.map(f => `${f.n} ${f.tipo === 'METROS' ? 'm' : f.unidad} de ${f.nombre}`),
+  ];
+
+  const mut = useMutation({
+    mutationFn: () => stockApi.traspasoTecnico({
+      tecnicoOrigenId:  origen.id,
+      tecnicoDestinoId: destinoId,
+      items: elegidos.map(f => f.tipo === 'METROS'
+        ? { productoId: f.productoId, metros: f.n }
+        : { productoId: f.productoId, cantidad: f.n }),
+      onu_ids: onusElegidas.map(o => o.id),
+      comentario: comentario.trim() || undefined,
+    }),
+    onSuccess: (res) => {
+      toast.success(`Traspaso N° ${res.data.traspasoId} hecho`);
+      qc.invalidateQueries({ queryKey: ['inventario-tecnico'] });
+      qc.invalidateQueries({ queryKey: ['traspaso-disponible'] });
+      qc.invalidateQueries({ queryKey: ['tecnicos'] });
+      qc.invalidateQueries({ queryKey: ['admin-stock-auditoria'] });
+      onClose();
+    },
+    onError: e => toast.error(e.response?.data?.error || 'No se pudo hacer el traspaso'),
+  });
+
+  if (!origen) return null;
+
+  const selectStyle = {
+    width: '100%', padding: '9px 10px', background: 'var(--bg-3)', border: '1px solid var(--border-2)',
+    borderRadius: 8, color: 'var(--txt)', fontSize: 13, outline: 'none', fontFamily: 'inherit',
+  };
+  const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', marginBottom: 5, letterSpacing: '0.04em' };
+  const seccion = { fontSize: 11, fontWeight: 700, color: 'var(--txt-3)', letterSpacing: '0.04em', margin: '4px 0 8px', textTransform: 'uppercase' };
+
+  const q = buscar.trim().toUpperCase();
+  const onusVisibles = q ? onus.filter(o => (o.codigoPon || '').toUpperCase().includes(q)) : onus;
+  const alternar = (id) => setOnusSel(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const alEscanear = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const exacta = onus.find(o => (o.codigoPon || '').toUpperCase() === q);
+    if (exacta) { setOnusSel(s => s.includes(exacta.id) ? s : [...s, exacta.id]); setBuscar(''); }
+    else if (q) toast.error('Ese código no está entre las ONUs de este técnico');
+  };
+
+  const porProductoOnu = {};
+  for (const o of onusVisibles) (porProductoOnu[o.producto] ||= []).push(o);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Pasar material a otro técnico" width={560}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontSize: 13, color: 'var(--txt-2)' }}>De: <b style={{ color: 'var(--txt)' }}>{nombreDe(origen)}</b></div>
+
+        <div>
+          <label style={labelStyle}>PASAR A</label>
+          {destinos.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>No hay otro técnico activo en esta sede</div>
+          ) : (
+            <select data-tr-destino value={destinoId} onChange={e => setDestinoId(e.target.value)} style={selectStyle}>
+              <option value="">Elige el técnico que recibe…</option>
+              {destinos.map(t => <option key={t.id} value={t.id}>{nombreDe(t)}</option>)}
+            </select>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div style={{ padding: 8 }}><Spinner size={18} /></div>
+        ) : errorCarga ? (
+          <div style={{ fontSize: 12, color: 'var(--red)' }}>{errorCarga.response?.data?.error || 'No se pudo cargar el material del técnico'}</div>
+        ) : (
+          <>
+            {(onus.length > 0 || onusBloqueadas.length > 0) && (
+              <div>
+                <div style={seccion}>ONUs (por código)</div>
+                <Input
+                  data-tr-buscar
+                  value={buscar}
+                  onChange={e => setBuscar(e.target.value)}
+                  onKeyDown={alEscanear}
+                  placeholder="Buscar o escanear código y Enter"
+                />
+                <div style={{ maxHeight: 190, overflowY: 'auto', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {Object.entries(porProductoOnu).map(([prod, lista]) => (
+                    <div key={prod}>
+                      <div style={{ fontSize: 11, color: 'var(--txt-3)', marginBottom: 3 }}>{prod}</div>
+                      {lista.map(o => (
+                        <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', fontSize: 12, fontFamily: 'var(--font-mono)', cursor: 'pointer', wordBreak: 'break-all' }}>
+                          <input data-tr-onu={o.id} type="checkbox" checked={onusSel.includes(o.id)} onChange={() => alternar(o.id)} />
+                          {o.codigoPon}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  {onusBloqueadas.map(o => (
+                    <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', fontSize: 12, color: 'var(--txt-3)', opacity: 0.7, wordBreak: 'break-all' }}>
+                      <input type="checkbox" disabled />
+                      <span style={{ fontFamily: 'var(--font-mono)' }}>{o.codigoPon}</span> · {o.motivo}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {filas.length > 0 && (
+              <div>
+                <div style={seccion}>Materiales</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {filas.map(f => {
+                    const medible = f.tipo === 'METROS';
+                    const sinSaldo = f.disponible <= 0;
+                    const nota = f.deuda > 0
+                      ? `Tiene deuda de ${f.deuda} ${f.unidad}`
+                      : (f.retirados > 0 || f.enDevolucion > 0)
+                        ? [f.retirados > 0 && `${f.retirados} retirados de clientes`, f.enDevolucion > 0 && `${f.enDevolucion} ${f.unidad} en devolución`].filter(Boolean).join(' · ')
+                        : null;
+                    return (
+                      <div key={f.productoId} style={{ opacity: sinSaldo ? 0.55 : 1 }}>
+                        <Input
+                          label={`${f.nombre} — ${medible ? 'METROS' : 'CANTIDAD'}`}
+                          data-tr-material={f.productoId}
+                          type="number" min={1} step={1} max={f.disponible}
+                          disabled={sinSaldo}
+                          value={f.txt}
+                          onChange={e => setValores(v => ({ ...v, [f.productoId]: e.target.value }))}
+                          placeholder={sinSaldo ? '—' : `Máx. ${f.disponible}`}
+                          error={f.error || undefined}
+                        />
+                        <div style={{ fontSize: 11, color: 'var(--txt-3)', marginTop: 3 }}>
+                          Disponible: {f.disponible} {f.unidad}{medible ? ` (rollo de ${f.metrosPorUnidad} m)` : ''}{nota ? ` · ${nota}` : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {items.length === 0 && onus.length === 0 && onusBloqueadas.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--txt-3)' }}>Este técnico no tiene material para pasar.</div>
+            )}
+          </>
+        )}
+
+        <Input
+          label="COMENTARIO (opcional)"
+          value={comentario}
+          onChange={e => setComentario(e.target.value)}
+          placeholder="Ej: el técnico se va, pasa su material"
+        />
+
+        {hayAlgo && destino && (
+          <div data-tr-resumen style={{ padding: '10px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--txt-2)' }}>
+            <b style={{ color: 'var(--accent)' }}>{nombreDe(destino)}</b> recibirá: {resumen.join(', ')}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn variant="primary" onClick={() => mut.mutate()} loading={mut.isPending} disabled={!destinoId || !hayAlgo || hayError || mut.isPending}>
+            Confirmar traspaso
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Modal Recomponer inventario (solo ADMIN / SUPERADMIN) ─────
 function ModalRecomponer({ open, onClose, tecnicos }) {
   const qc = useQueryClient();
@@ -1013,6 +1241,7 @@ export default function TecnicosPage() {
   const [tecnicoEditar,   setTecnicoEditar]   = useState(null);
   const [tecnicoPass,     setTecnicoPass]     = useState(null);
   const [tecnicoInventario, setTecnicoInventario] = useState(null);
+  const [tecnicoTraspaso, setTecnicoTraspaso] = useState(null);
 
   const { data: tecnicos, isLoading } = useQuery({
     queryKey: ['tecnicos'],
@@ -1145,7 +1374,8 @@ export default function TecnicosPage() {
 
                 {/* Inventario desglosado inline */}
                 {inventarioAbierto && (
-                  <PanelInventario tecnico={t} onClose={() => setTecnicoInventario(null)} />
+                  <PanelInventario tecnico={t} onClose={() => setTecnicoInventario(null)}
+                    onTraspaso={['ADMIN', 'SUPERADMIN', 'OPERADOR_NOC'].includes(usuario?.rol) ? () => setTecnicoTraspaso(t) : undefined} />
                 )}
               </React.Fragment>
             );
@@ -1155,6 +1385,7 @@ export default function TecnicosPage() {
 
       <ModalCrear       open={showCrear}             onClose={() => setShowCrear(false)} />
       <ModalRecomponer  open={showRecomponer}        onClose={() => setShowRecomponer(false)} tecnicos={tecnicos} />
+      <ModalTraspaso    open={!!tecnicoTraspaso}      onClose={() => setTecnicoTraspaso(null)}   origen={tecnicoTraspaso} tecnicos={tecnicos} />
       <ModalEditar      open={!!tecnicoEditar}        onClose={() => setTecnicoEditar(null)}    tecnico={tecnicoEditar} />
       <ModalPassword    open={!!tecnicoPass}          onClose={() => setTecnicoPass(null)}       tecnico={tecnicoPass} />
     </div>

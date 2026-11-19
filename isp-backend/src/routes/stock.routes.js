@@ -30,6 +30,8 @@ router.post('/envios/:id/confirmar', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR
 router.post('/envios/:id/cancelar', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.cancelarEnvio);
 router.get('/stats', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC', 'GERENTE'), ctrl.statsControlador);
 router.get('/tecnico/:tecnicoId', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC', 'SUPERVISOR'), ctrl.inventarioTecnico);
+router.get('/traspaso-tecnico/disponible/:tecnicoId', requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.disponibleTraspaso);
+router.post('/traspaso-tecnico',                     requireRol('SUPERADMIN', 'ADMIN', 'OPERADOR_NOC'), ctrl.traspasoTecnico);
 router.get('/mi-inventario',      requireRol('TECNICO'), ctrl.miInventario);
 router.post('/mi-consumo',        requireRol('TECNICO'), ctrl.registrarConsumo);
 router.post('/mi-retiro',         requireRol('TECNICO'), ctrl.registrarRetiro);

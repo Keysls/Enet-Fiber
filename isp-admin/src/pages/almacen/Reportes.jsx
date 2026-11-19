@@ -83,6 +83,7 @@ const TIPOS = {
   envio_entrada:     { label: 'Recepción',         color: '#0f6e56', bg: '#e1f5ee', border: '#5dcaa5' },
   envio_cancelado:   { label: 'Envío cancelado',   color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
   consumo:           { label: 'Consumo',           color: '#993556', bg: '#fbeaf0', border: '#f4c0d1' },
+  traspaso:          { label: 'Traspaso técnico',  color: '#0e7490', bg: '#ecfeff', border: '#a5f3fc' },
 };
 
 // El backend devuelve tipo='envio_salida' o 'envio_entrada' para todos los envíos,
@@ -514,9 +515,9 @@ export default function AdminAlmacenReportes() {
                             : m.sede_destino || m.sede_origen || ''}
                         </span>
                       )}
-                      {(m.tipo === 'salida' || m.tipo === 'consumo') && m.tecnico_nombre && (
+                      {(m.tipo === 'salida' || m.tipo === 'consumo' || m.tipo === 'traspaso') && m.tecnico_nombre && (
                         <span style={{ color: '#2563EB', fontWeight: 600, background: '#EFF6FF', padding: '1px 7px', borderRadius: 5 }}>
-                          👤 {m.tecnico_nombre}
+                          👤 {m.tecnico_nombre}{m.tipo === 'traspaso' && m.tecnico_destino ? ` → ${m.tecnico_destino}` : ''}
                         </span>
                       )}
                       {m.tipo === 'consumo' && m.contrato && (
@@ -555,8 +556,8 @@ export default function AdminAlmacenReportes() {
                           {m.motivo_cancelacion ? ` · ${m.motivo_cancelacion}` : ''}
                         </div>
                       )}
-                      {(m.tipo === 'salida' || m.tipo === 'consumo') && m.tecnico_nombre && (
-                        <div style={{ fontSize: 11, color: '#2563EB', fontWeight: 600 }}>👤 {m.tecnico_nombre}</div>
+                      {(m.tipo === 'salida' || m.tipo === 'consumo' || m.tipo === 'traspaso') && m.tecnico_nombre && (
+                        <div style={{ fontSize: 11, color: '#2563EB', fontWeight: 600 }}>👤 {m.tecnico_nombre}{m.tipo === 'traspaso' && m.tecnico_destino ? ` → ${m.tecnico_destino}` : ''}</div>
                       )}
                       {!esCancelado && (limpiarComentario(m.comentario) || m.motivo) && (
                         <div style={{ fontSize: 11, color: 'var(--txt-3)' }}>{limpiarComentario(m.comentario) || m.motivo}</div>

@@ -626,6 +626,40 @@ model OnuMovimiento {
   @@map("onu_movimientos")
 }
 
+// Traspasos entre técnicos (prisma/sql/20261118_traspasos_tecnicos.sql). Sin relaciones a técnicos/productos a propósito.
+model TraspasoTecnico {
+  id               Int                      @id @default(autoincrement())
+  sedeId           String                   @map("sede_id")
+  tecnicoOrigenId  String                   @map("tecnico_origen_id")
+  tecnicoDestinoId String                   @map("tecnico_destino_id")
+  registradoPor    String?                  @map("registrado_por")
+  comentario       String?
+  fecha            DateTime                 @default(now())
+  detalles         TraspasoTecnicoDetalle[]
+
+  @@index([tecnicoOrigenId])
+  @@index([tecnicoDestinoId])
+  @@index([sedeId])
+  @@map("traspasos_tecnicos")
+}
+
+model TraspasoTecnicoDetalle {
+  id              Int             @id @default(autoincrement())
+  traspasoId      Int             @map("traspaso_id")
+  productoId      Int             @map("producto_id")
+  tipo            String          @db.VarChar(10)
+  cantidad        Int
+  rollosCompletos Int             @default(0) @map("rollos_completos")
+  metrosSueltos   Int             @default(0) @map("metros_sueltos")
+  onuId           Int?            @map("onu_id")
+  codigoPon       String?         @map("codigo_pon")
+  traspaso        TraspasoTecnico @relation(fields: [traspasoId], references: [id], onDelete: Cascade)
+
+  @@index([traspasoId])
+  @@index([productoId])
+  @@map("traspaso_tecnico_detalles")
+}
+
 model Recojo {
   id             Int            @id @default(autoincrement())
   codigo         String?        @unique

@@ -1,4 +1,6 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../utils/prisma');
+const { netoMetrosTraspaso, saldoTraspasable, tablaTraspasos } = require('../utils/traspasos');
 const { anotarMovimiento, anotarMovimientos, movimientosPorReferencia } = require('../utils/onuMovimientos');
 const { fechaDelPanel } = require('../utils/fechaPeru');
 const { notificacionRequerimiento, enviarCorreoConSede, baseTemplate } = require('../utils/mailer');
@@ -920,7 +922,7 @@ const auditoriaControlador = async (req, res, next) => {
     const todasSedes = await prisma.sede.findMany({ select: { id: true, nombre: true } });
     const sedeNombre = (id) => todasSedes.find(s => s.id === id)?.nombre || null;
 
-    const [entregas, consumos, salidas, entradas, envios] = await Promise.all([
+    const [entregas, consumos, salidas, entradas, envios, traspasosAud] = await Promise.all([
       prisma.entregaTecnico.findMany({
         where: {
           ...(sedeId && { tecnico: { usuario: { sedeId } } }),
@@ -983,7 +985,28 @@ const auditoriaControlador = async (req, res, next) => {
         orderBy: { fechaEnvio: 'desc' },
         take: 100,
       }),
+      (await tablaTraspasos())
+        ? prisma.traspasoTecnico.findMany({
+            where: { ...(sedeId && { sedeId }) },
+            include: { detalles: true },
+            orderBy: { fecha: 'desc' },
+            take: 100,
+          })
+        : [],
     ]);
+
+    // Nombres de técnicos y productos de los traspasos
+    const nomTecTras = {}, nomProdTras = {};
+    if (traspasosAud.length) {
+      const idsT = [...new Set(traspasosAud.flatMap(t => [t.tecnicoOrigenId, t.tecnicoDestinoId]))];
+      const idsP = [...new Set(traspasosAud.flatMap(t => t.detalles.map(d => d.productoId)))];
+      const [tecs, prods] = await Promise.all([
+        prisma.tecnico.findMany({ where: { id: { in: idsT } }, select: { id: true, usuario: { select: { nombre: true, apellido: true } } } }),
+        prisma.producto.findMany({ where: { id: { in: idsP } }, select: { id: true, nombre: true } }),
+      ]);
+      for (const t of tecs) nomTecTras[t.id] = `${t.usuario?.nombre || ''} ${t.usuario?.apellido || ''}`.trim();
+      for (const p of prods) nomProdTras[p.id] = p.nombre;
+    }
 
     // Código de la ONU de cada salida directa (desde que se anotan los movimientos)
     const onusPorSalida = await movimientosPorReferencia('SALIDA_DIRECTA', salidas.map(s => s.id));
@@ -1040,6 +1063,21 @@ const auditoriaControlador = async (req, res, next) => {
       }))),
 
 
+      // Traspasos entre técnicos: NO son consumo
+      ...traspasosAud.flatMap(t => t.detalles.map(d => {
+        const nomProd = nomProdTras[d.productoId] || `Producto ${d.productoId}`;
+        const origenN = nomTecTras[t.tecnicoOrigenId] || null;
+        const destinoN = nomTecTras[t.tecnicoDestinoId] || null;
+        return {
+          id: `${t.id}-${d.id}`, fecha: t.fecha, tipo: 'traspaso',
+          item: d.codigoPon ? `${nomProd} — ${d.codigoPon}` : nomProd,
+          cantidad: d.tipo === 'METROS' ? `${d.cantidad} m` : d.cantidad,
+          tecnico_id: t.tecnicoOrigenId,
+          tecnico_nombre: origenN,
+          tecnico_destino: destinoN,
+          comentario: t.comentario ? `${origenN} → ${destinoN} · ${t.comentario}` : `${origenN} → ${destinoN}`,
+        };
+      })),
       ...salidas.map(s => ({ id: s.id, fecha: s.fecha, tipo: 'salida_directa', item: itemSalida(s), cantidad: s.cantidad, comentario: s.comentario, sede_nombre: sedeNombre(s.sedeId), sedeId: s.sedeId || null })),
       ...entradas.map(e => ({ id: e.id, fecha: e.fecha, tipo: 'entrada', item: e.producto.nombre, cantidad: e.cantidad, comentario: e.comentario, sede_nombre: sedeNombre(e.sedeId), sedeId: e.sedeId || null })),
       ...envios.flatMap(e => e.detalles.map(d => ({
@@ -1101,7 +1139,8 @@ const recomponerInventario = async (req, res, next) => {
         throw Object.assign(new Error('Este producto se maneja por código PON (ONUs); no se puede recomponer por cantidad'), { status: 422 });
 
       const medible = asignacion.producto.esMedible && asignacion.producto.metrosPorUnidad;
-      const total   = Number(asignacion.cantidad) * (medible ? asignacion.producto.metrosPorUnidad : 1);
+      const netoTras = medible ? ((await netoMetrosTraspaso(tx, tecnicoId, { sedeId: tecnico.sedeId }))[productoId] || 0) : 0;
+      const total   = Number(asignacion.cantidad) * (medible ? asignacion.producto.metrosPorUnidad : 1) + netoTras;
       const suma    = await tx.consumoTecnico.aggregate({ where: { tecnicoId, productoId }, _sum: { cantidad: true } });
       const gastado = Number(suma._sum.cantidad || 0);
       const disponible = total - gastado;
@@ -1207,7 +1246,40 @@ const inventarioTecnico = async (req, res, next) => {
       gastadoRealPorProducto[g.productoId] = Number(g._sum.cantidad || 0);
     }
 
+    const netoTras = await netoMetrosTraspaso(prisma, tecnicoId, { sedeId });
+
     const totalItems = asignaciones.reduce((s, a) => s + Number(a.cantidad), 0);
+
+    // Traspasos entre técnicos (últimos 50) para el historial
+    let traspasos = [];
+    if (await tablaTraspasos()) {
+      const filas = await prisma.traspasoTecnico.findMany({
+        where: { ...(sedeId && { sedeId }), OR: [{ tecnicoOrigenId: tecnicoId }, { tecnicoDestinoId: tecnicoId }] },
+        include: { detalles: true },
+        orderBy: { fecha: 'desc' },
+        take: 50,
+      });
+      const idsTec = [...new Set(filas.flatMap(f => [f.tecnicoOrigenId, f.tecnicoDestinoId]))];
+      const idsProd = [...new Set(filas.flatMap(f => f.detalles.map(d => d.productoId)))];
+      const [tecs, prods] = await Promise.all([
+        idsTec.length ? prisma.tecnico.findMany({ where: { id: { in: idsTec } }, select: { id: true, usuario: { select: { nombre: true, apellido: true } } } }) : [],
+        idsProd.length ? prisma.producto.findMany({ where: { id: { in: idsProd } }, select: { id: true, nombre: true } }) : [],
+      ]);
+      const nomT = Object.fromEntries(tecs.map(t => [t.id, `${t.usuario?.nombre || ''} ${t.usuario?.apellido || ''}`.trim()]));
+      const nomP = Object.fromEntries(prods.map(p => [p.id, p.nombre]));
+      traspasos = filas.flatMap(f => {
+        const salida = f.tecnicoOrigenId === tecnicoId;
+        return f.detalles.map(d => ({
+          tipo: salida ? 'traspaso_salida' : 'traspaso_entrada',
+          item: nomP[d.productoId] || `Producto ${d.productoId}`,
+          cantidad: d.cantidad,
+          unidad: d.tipo === 'METROS' ? 'm' : null,
+          codigoPon: d.codigoPon || null,
+          comentario: salida ? `A ${nomT[f.tecnicoDestinoId] || ''}`.trim() : `De ${nomT[f.tecnicoOrigenId] || ''}`.trim(),
+          fecha: f.fecha,
+        }));
+      });
+    }
 
     // Enriquecer consumos con datos de la orden (contrato/abonado)
     const consumosEnriquecidos = await Promise.all(
@@ -1285,6 +1357,7 @@ const inventarioTecnico = async (req, res, next) => {
         tipo: 'envio_salida', item: r.nombreProducto || r.tipoEquipo, cantidad: 1, fecha: r.fecha,
         nServicio: r.nServicio, abonado: r.abonado,
       })),
+      ...traspasos,
     ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
     res.json({
@@ -1303,7 +1376,7 @@ const inventarioTecnico = async (req, res, next) => {
           // antes se devolvía la cantidad cruda (rollos), mezclando unidades
           // con los consumos (ya en metros) y dando resultados absurdos
           // como "0 de 1 metros, gastado: 100".
-          cantidad:   esMedible ? cantBase * a.producto.metrosPorUnidad : cantBase,
+          cantidad:   esMedible ? cantBase * a.producto.metrosPorUnidad + (netoTras[a.productoId] || 0) : cantBase,
           gastadoTotal: gastadoRealPorProducto[a.productoId] || 0, // ya viene en metros si es medible
           fecha:      a.fecha,
         };
@@ -1323,6 +1396,7 @@ const inventarioTecnico = async (req, res, next) => {
       consumos:  consumosEnriquecidos,   // ← NUEVO
       recojos:   recojosEnriquecidos,    // ← NUEVO
       historial,                         // ← NUEVO
+      traspasos,
     });
   } catch (err) { next(err); }
 };
@@ -1421,6 +1495,8 @@ const miInventario = async (req, res, next) => {
       }),
     ]);
 
+    const netoTras = await netoMetrosTraspaso(prisma, tecnicoId, { sedeId });
+
     // Calcular consumo total por producto (usa la suma completa, no la lista truncada)
     const consumoPorProducto = {};
     for (const g of consumoTotalesPorProducto) {
@@ -1445,7 +1521,7 @@ for (const o of onus) {
 
           const esMedible      = a.producto.esMedible || false;
           const metrosPorUnidad = a.producto.metrosPorUnidad || null;
-          const asignadoBase   = esMedible && metrosPorUnidad ? asignado * metrosPorUnidad : asignado;
+          const asignadoBase   = esMedible && metrosPorUnidad ? asignado * metrosPorUnidad + (netoTras[a.productoId] || 0) : asignado;
       
           const utilizado = esOnu ? 0 : (consumoPorProducto[a.productoId] || 0); // ya en metros si es medible
       
@@ -2120,6 +2196,208 @@ const enviarRequerimientoCorreo = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── Traspaso de material entre técnicos de la misma sede ─────
+// Directo (sin aceptación). Reglas de saldo en utils/traspasos.js.
+const nombreTec = (t) => `${t.usuario?.nombre || ''} ${t.usuario?.apellido || ''}`.trim() || 'el técnico';
+
+// GET /api/stock/traspaso-tecnico/disponible/:tecnicoId
+const disponibleTraspaso = async (req, res, next) => {
+  try {
+    const { tecnicoId } = req.params;
+    const tecnico = await prisma.tecnico.findUnique({ where: { id: tecnicoId }, include: { usuario: true } });
+    if (!tecnico) return res.status(404).json({ error: 'Técnico no encontrado' });
+    const sedeId = tecnico.usuario?.sedeId;
+    if (!sedeId) return res.status(400).json({ error: 'El técnico no tiene sede asignada' });
+    if (req.usuario.rol === 'ADMIN' && sedeId !== req.usuario.sedeId)
+      return res.status(400).json({ error: 'Este técnico no es de tu sede' });
+
+    const saldo = await saldoTraspasable(prisma, { tecnicoId, sedeId });
+    res.json({ ...saldo, tecnico: { id: tecnico.id, nombre: nombreTec(tecnico), sedeId } });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};
+
+// POST /api/stock/traspaso-tecnico
+// Body: { tecnicoOrigenId, tecnicoDestinoId, items: [{ productoId, cantidad } | { productoId, metros }], onu_ids: [int], comentario? }
+const traspasoTecnico = async (req, res, next) => {
+  try {
+    const origenId  = req.body.tecnicoOrigenId  || req.body.tecnico_origen_id;
+    const destinoId = req.body.tecnicoDestinoId || req.body.tecnico_destino_id;
+    const items     = Array.isArray(req.body.items) ? req.body.items : [];
+    const onuIds    = uniqueNumericIds(req.body.onu_ids || req.body.onuIds || []);
+    const comentario = String(req.body.comentario || '').trim() || null;
+
+    if (!origenId || !destinoId) throw errorNegocio('Elige el técnico que entrega y el que recibe');
+    if (origenId === destinoId) throw errorNegocio('No puedes pasar material al mismo técnico');
+    if (items.length === 0 && onuIds.length === 0) throw errorNegocio('Elige al menos un material o una ONU');
+
+    const vistos = new Set();
+    for (const it of items) {
+      const pid = Number(it?.productoId ?? it?.producto_id);
+      if (!Number.isInteger(pid)) throw errorNegocio('Hay un material sin identificar');
+      if (vistos.has(pid)) throw errorNegocio('Hay un material repetido en la lista');
+      vistos.add(pid);
+    }
+
+    const [origen, destino] = await Promise.all([
+      prisma.tecnico.findUnique({ where: { id: origenId }, include: { usuario: true } }),
+      prisma.tecnico.findUnique({ where: { id: destinoId }, include: { usuario: true } }),
+    ]);
+    if (!origen || !destino) throw errorNegocio('Técnico no encontrado');
+    // El que entrega puede estar deshabilitado (se fue y pasa su material); el que recibe no.
+    if (!destino.activo || destino.usuario?.activo === false)
+      throw errorNegocio('El técnico que recibe está deshabilitado');
+
+    const sedeId = origen.usuario?.sedeId;
+    if (!sedeId || sedeId !== destino.usuario?.sedeId)
+      throw errorNegocio('Solo se puede pasar material entre técnicos de la misma sede');
+    if (req.usuario.rol === 'ADMIN' && sedeId !== req.usuario.sedeId)
+      throw errorNegocio('Estos técnicos no son de tu sede');
+    for (const t of [origen, destino]) {
+      if (t.sedeId && t.sedeId !== t.usuario.sedeId)
+        throw errorNegocio(`La sede de ${nombreTec(t)} no está bien registrada; revísala antes de traspasar`);
+    }
+    if (!(await tablaTraspasos()))
+      throw errorNegocio('Falta aplicar la migración de traspasos (prisma/sql/20261118_traspasos_tecnicos.sql)');
+
+    const nombreO = nombreTec(origen);
+    const nombreD = nombreTec(destino);
+
+    const resultado = await prisma.$transaction(async (tx) => {
+      // 1. Bloqueo igual para A→B y B→A (ids ordenados): sin deadlock entre ellos
+      for (const id of [origenId, destinoId].sort()) {
+        await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${'traspaso:' + id}))`;
+      }
+      const onusPedidas = onuIds.length
+        ? await tx.onu.findMany({ where: { id: { in: onuIds } }, select: { id: true, codigoPon: true, productoId: true } })
+        : [];
+      const productosBloqueo = [...new Set([...items.map(it => Number(it.productoId ?? it.producto_id)), ...onusPedidas.map(o => o.productoId)])];
+      if (productosBloqueo.length) {
+        await tx.$queryRaw`SELECT id FROM asignaciones_tecnicos WHERE tecnico_id = ${origenId} AND sede_id = ${sedeId} AND producto_id IN (${Prisma.join(productosBloqueo)}) FOR UPDATE`;
+      }
+
+      // 2. Saldo ya con lo confirmado por otros traspasos
+      const saldo = await saldoTraspasable(tx, { tecnicoId: origenId, sedeId });
+
+      const traspaso = await tx.traspasoTecnico.create({
+        data: { sedeId, tecnicoOrigenId: origenId, tecnicoDestinoId: destinoId, registradoPor: req.usuario.id, comentario },
+      });
+
+      const subir = (productoId, n) => tx.asignacionTecnico.upsert({
+        where: { tecnicoId_productoId_sedeId: { tecnicoId: destinoId, productoId, sedeId } },
+        update: { cantidad: { increment: n } },
+        create: { tecnicoId: destinoId, productoId, sedeId, cantidad: n },
+      });
+      const bajar = async (productoId, n) => (await tx.asignacionTecnico.updateMany({
+        where: { tecnicoId: origenId, productoId, sedeId, cantidad: { gte: n } },
+        data: { cantidad: { decrement: n } },
+      })).count;
+
+      const resumenItems = [];
+      const detallesLog = [];
+      for (const it of items) {
+        const productoId = Number(it.productoId ?? it.producto_id);
+        const s = saldo.items.find(x => x.productoId === productoId);
+        if (!s) {
+          const prod = await tx.producto.findUnique({ where: { id: productoId }, select: { nombre: true } });
+          const nombreProd = prod?.nombre || `producto ${productoId}`;
+          if (saldo.productosOnu.includes(productoId))
+            throw errorNegocio(`${nombreProd} se pasa eligiendo los códigos de las ONUs`);
+          throw errorNegocio(`${nombreO} no tiene ${nombreProd}`);
+        }
+        const medible = s.tipo === 'METROS';
+        const crudo = medible ? it.metros : it.cantidad;
+        if (medible && (crudo === undefined || crudo === null || crudo === ''))
+          throw errorNegocio(`Indica los metros de ${s.nombre}`);
+        const n = Number(crudo);
+        if (!Number.isInteger(n) || n <= 0)
+          throw errorNegocio(medible
+            ? `Los metros de ${s.nombre} deben ser un número entero mayor a 0`
+            : `La cantidad de ${s.nombre} debe ser un número entero mayor a 0`);
+        const u = medible ? 'm' : s.unidad;
+        if (n > s.disponible) {
+          if (s.deuda > 0) throw errorNegocio(`${nombreO} tiene deuda de ${s.deuda} ${u} de ${s.nombre}; no puede pasar`);
+          throw errorNegocio(`${nombreO} solo puede pasar ${s.disponible} ${u} de ${s.nombre}`);
+        }
+
+        let k = n;
+        let sueltos = 0;
+        if (medible) {
+          const mpu = s.metrosPorUnidad;
+          k = Math.min(Math.floor(n / mpu), Math.max(0, Math.floor(s.asignado - s.enDevolucionRollos)));
+          sueltos = n - k * mpu;
+        }
+        if (k > 0 && (await bajar(productoId, k)) !== 1)
+          throw errorNegocio(`${nombreO} ya no tiene ${n} ${u} de ${s.nombre}`);
+        // La fila del destino tiene que existir aunque k=0: los inventarios recorren las asignaciones
+        await subir(productoId, k);
+
+        await tx.traspasoTecnicoDetalle.create({
+          data: { traspasoId: traspaso.id, productoId, tipo: medible ? 'METROS' : 'CANTIDAD', cantidad: n, rollosCompletos: medible ? k : 0, metrosSueltos: sueltos },
+        });
+        resumenItems.push(`${n} ${u} de ${s.nombre}`);
+        detallesLog.push({ productoId, producto: s.nombre, tipo: medible ? 'METROS' : 'CANTIDAD', cantidad: n, unidad: u, rollosCompletos: medible ? k : 0, metrosSueltos: sueltos });
+      }
+
+      const onusMovidas = [];
+      for (const onuId of onuIds) {
+        const o = saldo.onus.find(x => x.id === onuId);
+        if (!o) {
+          const bloqueada = saldo.onusBloqueadas.find(x => x.id === onuId);
+          if (bloqueada) throw errorNegocio(`La ONU ${bloqueada.codigoPon} es un equipo retirado de un cliente; primero debe devolverse y revisarse`);
+          const pedida = onusPedidas.find(x => x.id === onuId);
+          throw errorNegocio(`La ONU ${pedida?.codigoPon || `ID ${onuId}`} no está en manos de ${nombreO} o ya no está disponible`);
+        }
+        const mov = await tx.onu.updateMany({
+          where: { id: onuId, tecnicoId: origenId, sedeId, cliente: null, salidaDirecta: false },
+          data: { tecnicoId: destinoId },
+        });
+        if (mov.count !== 1) throw errorNegocio(`La ONU ${o.codigoPon} ya no está disponible`);
+        // Dato viejo inconsistente: si la asignación del origen ya está en 0 no se falla
+        const ajuste = (await bajar(o.productoId, 1)) === 1;
+        await subir(o.productoId, 1);
+        await tx.traspasoTecnicoDetalle.create({
+          data: { traspasoId: traspaso.id, productoId: o.productoId, tipo: 'ONU', cantidad: 1, onuId, codigoPon: o.codigoPon },
+        });
+        onusMovidas.push({ id: onuId, codigoPon: o.codigoPon, ajusteAsignacion: ajuste });
+      }
+
+      await anotarMovimientos(tx, onusMovidas, {
+        tipo: 'TRASPASO_TECNICO', sedeId, referencia: traspaso.id,
+        detalle: `de ${nombreO} a ${nombreD}`, usuarioId: req.usuario.id,
+      });
+
+      await tx.logActividad.create({
+        data: {
+          usuarioId:  req.usuario.id,
+          accion:     'TRASPASO_TECNICO',
+          tabla:      'traspasos_tecnicos',
+          registroId: String(traspaso.id),
+          detalles:   {
+            sedeId,
+            origen: { id: origenId, nombre: nombreO },
+            destino: { id: destinoId, nombre: nombreD },
+            items: detallesLog,
+            onus: onusMovidas.map(o => o.codigoPon),
+            ...(onusMovidas.some(o => !o.ajusteAsignacion) && { ajusteAsignacion: false }),
+          },
+          ip: req.ip,
+        },
+      });
+
+      const resumen = [...(onusMovidas.length ? [`${onusMovidas.length} ONU${onusMovidas.length > 1 ? 's' : ''} (${onusMovidas.map(o => o.codigoPon).join(', ')})`] : []), ...resumenItems];
+      return { traspasoId: traspaso.id, resumen };
+    }, { timeout: 20000 });
+
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};
+
 module.exports = {
   verStock,
   catalogoTecnico,
@@ -2136,6 +2414,8 @@ module.exports = {
   statsControlador,
   inventarioTecnico,
   recomponerInventario,
+  disponibleTraspaso,
+  traspasoTecnico,
   auditoriaControlador,
   miInventario,
   registrarConsumo,
