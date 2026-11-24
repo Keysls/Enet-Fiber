@@ -312,12 +312,13 @@ export default function OrdenesPage() {
 
   const { data: siscadreConexiones = [] } = useQuery({
     queryKey: ['siscadre-conexiones', usuario?.sedeId],
-    queryFn:  () => siscadreApi.listarConexiones(usuario.sedeId).then(r => r.data),
+    // incluirApoyo: una sede sin conexión propia que apoya a otra también sincroniza
+    queryFn:  () => siscadreApi.listarConexiones(usuario.sedeId, { incluirApoyo: 1 }).then(r => r.data),
     enabled:  !!usuario?.sedeId && !esSupervisor(usuario) && !lectura,
   });
 
-  const tieneSiscadre = siscadreConexiones.length > 0;
-  // Último sync = el más reciente entre todas las conexiones de la sede
+  const tieneSiscadre = siscadreConexiones.some(c => c.activo);
+  // Último sync = el más reciente entre todas las conexiones (propias y de sedes apoyadas)
   const ultimoSync = siscadreConexiones
     .map(c => c.siscadreLastSync)
     .filter(Boolean)

@@ -132,9 +132,16 @@ const listarConexiones = async (req, res, next) => {
       return res.status(403).json({ error: 'No tienes acceso a esta sede' });
     }
 
-    const conexiones = await prisma.siscadreConexion.findMany({ where: { sedeId },
+    // ?incluirApoyo=1 suma las conexiones de las sedes que esta sede apoya
+    // (la sede sin conexión propia sincroniza las de la sede apoyada).
+    const incluirApoyo = ['1', 'true'].includes(String(req.query.incluirApoyo));
+    const sedes = incluirApoyo ? await sedesQueAtiende(sedeId) : [sedeId];
+
+    const conexiones = await prisma.siscadreConexion.findMany({ where: { sedeId: { in: sedes } },
       select: {
         id:               true,
+        sedeId:           true,
+        sede:             { select: { nombre: true } },
         tipoServicio:     true,
         siscadreHost:     true,
         siscadrePort:     true,
@@ -466,8 +473,8 @@ const sincronizar = async (req, res, next) => {
     // Primero las de la propia sede
     conexiones.sort((a, b) => (a.sedeId === sedeId ? 0 : 1) - (b.sedeId === sedeId ? 0 : 1));
 
-    if (!conexiones.some(c => c.sedeId === sedeId)) {
-      return res.status(400).json({ error: 'Esta sede no tiene ninguna conexión Siscadre configurada' });
+    if (conexiones.length === 0) {
+      return res.status(400).json({ error: 'Ni esta sede ni las que apoya tienen conexión Siscadre configurada' });
     }
 
     const resultados = [];
